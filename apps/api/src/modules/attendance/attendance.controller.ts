@@ -103,9 +103,20 @@ export class AttendanceController {
   }
 
   @Post('sessions/:id/absen')
+  // Selalu 200: endpoint ini idempoten. Bila catatan baru dibuat maupun catatan
+  // lama dikembalikan, hasilnya "berhasil". Field `sudahAda` yang
+  // membedakan keduanya — kode status tidak, supaya percobaan ulang dari
+  // WhatsApp (jaringan putus) tidak dianggap gagal oleh klien.
+  @HttpCode(HttpStatus.OK)
   @Izin('attendance.write')
-  @ApiOperation({ summary: 'Catat kehadiran (idempoten via idempotencyKey)' })
-  @ApiResponse({ status: 409, description: 'Kehadiran sudah tercatat' })
+  @ApiOperation({
+    summary: 'Catat kehadiran (idempoten lewat idempotencyKey)',
+    description:
+      'Mengirim ulang dengan idempotencyKey yang sama aman: catatan lama dikembalikan ' +
+      'dengan `sudahAda: true`, bukan membuat catatan baru.',
+  })
+  @ApiResponse({ status: 200, description: 'Berhasil — periksa `sudahAda` untuk tahu baru atau ulangan' })
+  @ApiResponse({ status: 409, description: 'Anggota sudah punya catatan lain pada sesi ini' })
   catatHadir(
     @Parameter(SkemaIdSesi) parameter: { id: string },
     @Tubuh(SkemaCatatHadir) masukan: PayloadCatatHadir,

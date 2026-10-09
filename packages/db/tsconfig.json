@@ -1,4 +1,10 @@
 {
   "extends": "@osda/config/library.json",
-  "include": ["src/**/*.ts"]
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [
+    "src/**/*.ts",
+    "tests/**/*.ts"
+  ]
 }

@@ -103,14 +103,33 @@ Enum `sumber_absensi`: `WEB`, `MOBILE`, `WHATSAPP`, `ADMIN`, `QR`.
 | Sumber | Kapan dipakai |
 |---|---|
 | `WHATSAPP` | Anggota mengirim `HADIR`/`IZIN`/`SAKIT` ke bot. |
-| `QR` | `catatHadir` dipanggil dengan `tokenQr` (baris diatur `sumber: masukan.tokenQr ? 'QR' : 'WEB'`). |
+| `QR` | `catatHadir` dipanggil dengan `tokenQr` — backend menandai sumber `QR`. |
 | `WEB` | Absensi dari Web Dashboard. |
 | `MOBILE` | Absensi dari aplikasi mobile. |
 | `ADMIN` | Dibuat atau diubah otomatis oleh sistem/pengurus. Baris `ABSENT` otomatis memakai sumber ini. |
 
-Catatan migrasi: `tools/legacy/scripts/migrate-to-v2.mjs` memakai `SUMBER_SISTEM = 'ADMIN'`
-untuk baris yang dibuat otomatis, dan hanya mengizinkan status dari anggota
-(`PRESENT`, `LATE`, `EXCUSED`, `SICK`) memakai sumber `WHATSAPP`.
+### Bagaimana backend menentukan sumber
+
+Sumber **tidak pernah** diambil dari badan permintaan. Menyalinnya dari klien
+akan membuat anggota bisa menandai absensinya sendiri sebagai `ADMIN`.
+
+`apps/api/src/common/utilitas/sumber-kanal.ts` menentukan sumber berurutan:
+
+1. **Header `x-osda-sumber`** — dipasang client resmi (Web, Mobile, Bot).
+   Nilai di luar daftar yang diizinkan jatuh ke bawaan, bukan diterima apa adanya.
+2. **USER_AGENT** — untuk klien yang tidak memasang header
+   (`osda-bot`/`whatsapp` → `WHATSAPP`, `expo`/`okhttp`/`react-native` → `MOBILE`).
+3. **Bawaan `WEB`.**
+
+Pengecualian: bila permintaan membawa `tokenQr`, backend menandai sumber `QR`
+secara langsung, karena pemindai QR adalah bukti yang tidak bisa dipalsukan klien.
+
+Catatan migrasi: `tools/legacy/scripts/migrate-to-v2.mjs` memakai `ADMIN` untuk
+baris yang dibuat otomatis, dan hanya memberi `WHATSAPP` pada status yang benar
+diisi anggota (`PRESENT`, `LATE`, `EXCUSED`, `SICK`).
+
+> Uji end-to-end memverifikasi hal ini: absensi berheader `x-osda-sumber: WHATSAPP`
+> tercatat dengan sumber `WHATSAPP`, sedangkan permintaan biasa tercatat `WEB`.
 
 ---
 

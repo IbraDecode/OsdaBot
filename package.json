@@ -9,11 +9,14 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "build": "turbo run build",
+    "build": "pnpm build:paket && pnpm --filter @osda/api build && pnpm --filter @osda/bot build",
+    "build:paket": "for p in contracts auth domain notifications db; do pnpm --filter \"@osda/$p\" build; done",
     "dev": "turbo run dev --parallel",
+    "start": "pnpm --filter @osda/api start",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "e2e": "node tools/scripts/e2e-absensi.mjs",
     "clean": "turbo run clean && rm -rf node_modules",
     "db:generate": "pnpm --filter @osda/db generate",
     "db:migrate": "pnpm --filter @osda/db migrate",

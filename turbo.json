@@ -3,40 +3,64 @@
   "ui": "stream",
   "globalEnv": [
     "NODE_ENV",
+    "TZ",
     "DATABASE_URL",
     "REDIS_URL",
     "JWT_SECRET",
     "JWT_REFRESH_SECRET",
+    "CORS_ORIGINS",
+    "API_PORT",
+    "PUBLIC_API_URL",
+    "RATE_LIMIT_PER_MINUTE",
     "WHATSAPP_ENABLED",
     "WHATSAPP_PHONE_NUMBER",
+    "WHATSAPP_SESSION_DIR",
     "STORAGE_ENDPOINT",
     "STORAGE_BUCKET",
     "STORAGE_ACCESS_KEY_ID",
-    "STORAGE_SECRET_ACCESS_KEY"
+    "STORAGE_SECRET_ACCESS_KEY",
+    "STORAGE_FORCE_PATH_STYLE",
+    "NEXT_PUBLIC_API_URL",
+    "PUBLIC_WEB_URL"
+  ],
+  "globalDependencies": [
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+    "turbo.json"
   ],
   "tasks": {
     "build": {
-      "dependsOn": ["^build"],
-      "outputs": ["dist/**", ".next/**", "!.next/cache/**", "build/**"]
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        "dist/**"
+      ]
     },
     "typecheck": {
-      "dependsOn": ["^build"],
+      "dependsOn": [
+        "^build"
+      ],
       "outputs": []
     },
     "lint": {
-      "dependsOn": ["^build"],
+      "dependsOn": [
+        "^build"
+      ],
       "outputs": []
     },
     "test": {
-      "dependsOn": ["^build"],
-      "outputs": ["coverage/**"]
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": []
+    },
+    "clean": {
+      "cache": false
     },
     "dev": {
       "cache": false,
       "persistent": true
-    },
-    "clean": {
-      "cache": false
     },
     "db:generate": {
       "cache": false

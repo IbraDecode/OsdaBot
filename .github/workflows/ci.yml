@@ -1,0 +1,148 @@
+# ============================================================
+# OSDA Platform — Continuous Integration
+# ============================================================
+# Alur:
+#   1. install    : dependensi terkunci (pnpm-lock.yaml)
+#   2. typecheck  : 0 galat di seluruh workspace
+#   3. test       : tes unit domain, kontrak, dan bot
+#   4. rules      : dokumentasi wajib + aturan arsitektur
+#   5. build      : semua paket ter-build ke dist/
+#   6. db-schema  : pastikan skema tetap bisa di-generate (drizzle-kit check)
+#
+# E2E tidak dijalankan di CI karena membutuhkan database PostgreSQL.
+# Jalankan secara lokal: node tools/scripts/e2e-absensi.mjs
+# ============================================================
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Batalkan build lama bila commit baru datang.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  periksa:
+    name: Periksa (typecheck, tes, aturan)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Ambil kode
+        uses: actions/checkout@v4
+
+      - name: Pasang pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Pasang Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Instal dependensi
+        run: pnpm install --frozen-lockfile
+
+      - name: Periksa keutuhan lockfile
+        run: pnpm install --frozen-lockfile --lockfile-only
+
+      - name: Typecheck seluruh workspace
+        run: pnpm typecheck
+
+      - name: Jalankan tes unit
+        run: pnpm test
+
+      - name: Pastikan 21 dokumen wajib tersedia
+        run: pnpm docs:check
+
+      - name: Pastikan aturan arsitektur terpenuhi
+        # Menangkap klien yang mencoba mengakses database langsung,
+        # atau kredensial yang bocor ke dalam kode.
+        run: pnpm check:architecture
+
+  build:
+    name: Build produksi
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: periksa
+
+    steps:
+      - name: Ambil kode
+        uses: actions/checkout@v4
+
+      - name: Pasang pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Pasang Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Instal dependensi
+        run: pnpm install --frozen-lockfile
+
+      - name: Build paket bersama (contracts, db, auth, domain, notifications)
+        run: |
+          for p in contracts auth domain notifications db; do
+            echo "▸ build @osda/$p"
+            pnpm --filter "@osda/$p" build
+          done
+
+      - name: Build API
+        run: pnpm --filter @osda/api build
+
+      - name: Build Bot
+        run: pnpm --filter @osda/bot build
+
+      - name: Pastikan artefak utama ada
+        run: |
+          test -f apps/api/dist/main.js   || { echo 'API tidak ter-build'; exit 1; }
+          test -f apps/bot/dist/main.js   || { echo 'Bot tidak ter-build'; exit 1; }
+          test -f packages/contracts/dist/index.js || { echo 'Kontrak tidak ter-build'; exit 1; }
+          echo '✓ Semua artefak build tersedia.'
+
+  skema:
+    name: Validasi skema database
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Ambil kode
+        uses: actions/checkout@v4
+
+      - name: Pasang pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Pasang Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Instal dependensi
+        run: pnpm install --frozen-lockfile
+
+      - name: Skema Drizzle tetap konsisten
+        # `drizzle-kit check` gagal bila hasil generate tidak cocok dengan
+        # berkas migrasi yang sudah ada di repositori.
+        run: pnpm --filter @osda/db exec drizzle-kit check
+
+      - name: Berkas migrasi ada
+        run: |
+          n=$(ls packages/db/drizzle/*.sql | wc -l)
+          echo "Jumlah berkas migrasi: $n"
+          test "$n" -ge 1 || { echo 'Belum ada migrasi'; exit 1; }

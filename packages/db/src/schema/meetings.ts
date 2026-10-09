@@ -79,7 +79,11 @@ export const meetings = pgTable(
     index('ix_rapat_period').on(t.periodId),
     index('ix_rapat_program').on(t.programId),
     index('ix_rapat_division').on(t.divisionId),
-    uniqueIndex('uq_rapat_undangan_slot').on(t.organizationId, t.tanggal, t.waktuMulai),
+    // CATATAN: TIDAK ada unique constraint pada (tanggal, waktuMulai).
+    // Sebuah organisasi boleh punya beberapa rapat pada jam yang sama —
+    // misalnya rapat rutin.divisi yang berjalan paralel. Tabrakan jadwal
+    // adalah peringatan, bukan error; validasi卖给 lewat endpoint kalender.
+    index('ix_rapat_slot').on(t.organizationId, t.tanggal, t.waktuMulai),
   ],
 );
 

@@ -26,6 +26,7 @@ import { KUNCI_PUBLIK } from '../decorators/publik.decorator.js';
 import type { PermintaanBerkonteks } from '../tipe.js';
 import { LayananDatabase } from '../../database/database.service.js';
 import { ambilPengguna } from '../utilitas/pengguna-permintaan.js';
+import { tentukanSumberAudit } from '../utilitas/sumber-kanal.js';
 
 /** Aksi audit bawaan menurut pola rute. */
 const PETA_AKSI: readonly (readonly [RegExp, string])[] = [
@@ -125,7 +126,7 @@ export class AuditInterceptor implements NestInterceptor {
         entitasTabel: data.tabel,
         actorId: ambilPengguna(data.permintaan)?.sub ?? null,
         actorMemberId: ambilPengguna(data.permintaan)?.memberId ?? null,
-        sumber: 'API',
+        sumber: tentukanSumberAudit(data.permintaan),
         ip: typeof data.permintaan.ip === 'string' ? data.permintaan.ip : null,
         userAgent: this.bacaHeader(data.permintaan, 'user-agent'),
         requestId: data.permintaan.requestId,

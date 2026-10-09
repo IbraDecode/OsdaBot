@@ -586,7 +586,7 @@ export class FinanceService {
         debit,
         kredit,
         narration: `[${diposting.kode}] ${sebelum.keterangan}`,
-        createdBy: pengguna.memberId,
+        dibuatOleh: pengguna.memberId,
       });
 
       // TRANSFER: catat pula sisi tujuan agar buku kas dua arah tetap konsisten.
@@ -600,7 +600,7 @@ export class FinanceService {
           debit: kredit,
           kredit: debit,
           narration: `[${diposting.kode}] Transfer masuk dari akun ${sebelum.accountId}`,
-          createdBy: pengguna.memberId,
+          dibuatOleh: pengguna.memberId,
         });
       }
 
@@ -647,14 +647,14 @@ export class FinanceService {
         tanggal: ledgerEntries.tanggal,
         debit: ledgerEntries.debit,
         kredit: ledgerEntries.kredit,
-        saldoBerjalan: ledgerEntries.saldoRunnable,
+        saldoBerjalan: ledgerEntries.saldoBerjalan,
         narration: ledgerEntries.narration,
-        createdAt: ledgerEntries.createdAt,
+        dibuatPada: ledgerEntries.dibuatPada,
       })
       .from(ledgerEntries)
       .innerJoin(accounts, eq(accounts.id, ledgerEntries.accountId))
       .where(and(...syarat))
-      .orderBy(desc(ledgerEntries.tanggal), desc(ledgerEntries.createdAt))
+      .orderBy(desc(ledgerEntries.tanggal), desc(ledgerEntries.dibuatPada))
       .limit(limit)
       .offset((page - 1) * limit);
 
@@ -673,7 +673,8 @@ export class FinanceService {
         kredit: b.kredit,
         saldoBerjalan: b.saldoBerjalan,
         narration: b.narration,
-        createdAt: String(b.createdAt),
+        // Kontrak API memakai nama `createdAt`; nama kolomnya `dibuat_pada`.
+        createdAt: String(b.dibuatPada),
       })),
       meta: {
         page,

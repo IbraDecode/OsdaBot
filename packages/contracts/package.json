@@ -4,32 +4,96 @@
   "private": true,
   "description": "Kontrak bersama OSDA: permission, peran, enum status, dan skema validasi yang dipakai API, Web, Mobile, dan Bot.",
   "type": "module",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts",
-    "./auth": "./src/auth.ts",
-    "./members": "./src/members.ts",
-    "./attendance": "./src/attendance.ts",
-    "./meetings": "./src/meetings.ts",
-    "./tasks": "./src/tasks.ts",
-    "./programs": "./src/programs.ts",
-    "./events": "./src/events.ts",
-    "./finance": "./src/finance.ts",
-    "./documents": "./src/documents.ts",
-    "./communications": "./src/communications.ts",
-    "./notifications": "./src/notifications.ts",
-    "./common": "./src/common.ts",
-    "./permissions": "./src/permissions.ts",
-    "./enums": "./src/enums.ts",
-    "./profile": "./src/profile.ts",
-    "./dashboard": "./src/dashboard.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json",
+    "./auth": {
+      "types": "./dist/auth.d.ts",
+      "import": "./dist/auth.js",
+      "default": "./dist/auth.js"
+    },
+    "./members": {
+      "types": "./dist/members.d.ts",
+      "import": "./dist/members.js",
+      "default": "./dist/members.js"
+    },
+    "./attendance": {
+      "types": "./dist/attendance.d.ts",
+      "import": "./dist/attendance.js",
+      "default": "./dist/attendance.js"
+    },
+    "./meetings": {
+      "types": "./dist/meetings.d.ts",
+      "import": "./dist/meetings.js",
+      "default": "./dist/meetings.js"
+    },
+    "./tasks": {
+      "types": "./dist/tasks.d.ts",
+      "import": "./dist/tasks.js",
+      "default": "./dist/tasks.js"
+    },
+    "./programs": {
+      "types": "./dist/programs.d.ts",
+      "import": "./dist/programs.js",
+      "default": "./dist/programs.js"
+    },
+    "./finance": {
+      "types": "./dist/finance.d.ts",
+      "import": "./dist/finance.js",
+      "default": "./dist/finance.js"
+    },
+    "./documents": {
+      "types": "./dist/documents.d.ts",
+      "import": "./dist/documents.js",
+      "default": "./dist/documents.js"
+    },
+    "./communications": {
+      "types": "./dist/communications.d.ts",
+      "import": "./dist/communications.js",
+      "default": "./dist/communications.js"
+    },
+    "./notifications": {
+      "types": "./dist/notifications.d.ts",
+      "import": "./dist/notifications.js",
+      "default": "./dist/notifications.js"
+    },
+    "./common": {
+      "types": "./dist/common.d.ts",
+      "import": "./dist/common.js",
+      "default": "./dist/common.js"
+    },
+    "./dashboard": {
+      "types": "./dist/dashboard.d.ts",
+      "import": "./dist/dashboard.js",
+      "default": "./dist/dashboard.js"
+    },
+    "./profile": {
+      "types": "./dist/profile.d.ts",
+      "import": "./dist/profile.js",
+      "default": "./dist/profile.js"
+    },
+    "./enums": {
+      "types": "./dist/enums.d.ts",
+      "import": "./dist/enums.js",
+      "default": "./dist/enums.js"
+    },
+    "./permissions": {
+      "types": "./dist/permissions.d.ts",
+      "import": "./dist/permissions.js",
+      "default": "./dist/permissions.js"
+    }
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "test": "vitest run",
-    "build": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
@@ -40,5 +104,8 @@
     "@types/node": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
-  }
+  },
+  "files": [
+    "dist"
+  ]
 }

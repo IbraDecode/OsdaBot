@@ -233,13 +233,32 @@ lengkap. All code, comments, dan dokumentasi dalam Bahasa Indonesia.
 ## Perintah Penting
 
 ```bash
-pnpm typecheck              # validasi seluruh repo
+pnpm typecheck              # validasi seluruh repo (9 workspace)
+pnpm test                   # 160 tes unit
+pnpm build                  # build produksi (paket bersama → API → Bot)
+pnpm start                  # jalankan API dari dist/
+pnpm e2e                    # uji alur absensi end-to-end (API harus hidup)
 pnpm db:migrate             # terapkan migrasi + invariant
 pnpm db:seed                # isi data awal
 pnpm docs:check             # 21 dokumen wajib tersedia?
 pnpm check:architecture     # ada klien akses DB langsung?
 pnpm legacy:reconcile       # data lama utuh?
 ```
+
+## Verifikasi
+
+| Pemeriksaan | Status |
+|---|---|
+| Typecheck 9 workspace | 0 galat |
+| Tes unit | 160 lulus (contracts 26 · auth 23 · domain 24 · notifications 28 · db 27 · bot 32) |
+| Uji E2E absensi | 28/28 lulus |
+| Rekonsiliasi data lama | selisih 0 |
+| Dokumen wajib | 21/21 |
+| Aturan arsitektur | terpenuhi |
+| Build produksi | `node dist/main.js` jalan |
+
+> **Penting:** setelah mengubah `packages/db`, jalankan
+> `pnpm --filter @osda/db build`. API memakai `dist` paket itu, bukan sumber.
 
 ---
 

@@ -24,11 +24,15 @@ Prinsip yang tidak boleh dilanggar:
 # Instalasi
 pnpm install
 
-#/typecheck seluruh repo (WAJIB dijalankan sebelum selesai)
+# typecheck seluruh repo (WAJIB dijalankan sebelum selesai)
 pnpm typecheck
 
 # Uji coba semua aplikasi sekaligus
 pnpm dev
+
+# Build produksi (paket bersama → API → Bot)
+pnpm build
+pnpm start          # menjalankan API dari dist/
 
 # Database
 pnpm db:migrate                 # terapkan migrasi + trigger invariant
@@ -40,14 +44,17 @@ node tools/legacy/scripts/dump-legacy.mjs    # cadangan
 node tools/legacy/scripts/migrate-to-v2.mjs  # migrasi
 node tools/legacy/scripts/reconcile.mjs      # verifikasi (harus 0 selisih)
 
+# Uji end-to-end (butuh API hidup di port 4000)
+pnpm e2e
+
 # Pemeriksaan aturan
 pnpm docs:check                # 21 dokumen wajib tersedia
 pnpm check:architecture         # tidak ada klien akses DB langsung
 ```
 
-> **Hindari `pnpm build`.** Repository ini punya banyak workspace dan build
-> penuh bisa memakan lebih dari 10 menit. Gunakan `pnpm typecheck` untuk
-> memvalidasi perubahan.
+> **Hindari `pnpm dev` untuk semua** di server kecil — menjalankan semua aplikasi
+> sekaligus bisa menghabiskan memori. Jalankan per-aplikasi:
+> `pnpm --filter @osda/api dev` lalu `pnpm --filter @osda/web dev`.
 
 ---
 
@@ -55,25 +62,25 @@ pnpm check:architecture         # tidak ada klien akses DB langsung
 
 ```
 apps/
-├── api/          NestJS + Fastify. Semua modul Fitur.
-├── web/          Next.js App Router. Dasbor_switchboard.
-├── bot/          Baileys WhatsApp — client ringan, tanpa akses DB.
-└── mobile/       Expo (standalone, tidak ikut workspace instalasi)
+── api/          NestJS + Fastify. Semua modul fitur.
+── web/          Next.js App Router. Dasbor per peran.
+── bot/          Baileys WhatsApp — client ringan, tanpa akses DB.
+── mobile/       Expo (standalone, di luar workspace instalasi)
 
 packages/
-├── contracts/    Kontrak tunggal: permission, enum, skema Zod, tipe DTO.
-├── db/           Skema Drizzle + migrasi + invariant SQL.
-├── auth/         Utilitas autentikasi (hash token, kode, izin bawaan).
-├── domain/       Aturan domain murni (alur status, perhitungan).
-├── notifications/ Mesin notifikasi + adapter penyedia.
-└── config/       Konfigurasi TypeScript bersama.
+── contracts/    Kontrak tunggal: permission, enum, skema Zod, tipe DTO.
+── db/           Skema Drizzle + migrasi + invariant SQL.
+── auth/         Utilitas autentikasi (hash token, kode, izin bawaan).
+── domain/       Aturan domain murni (alur status, perhitungan).
+── notifications/ Mesin notifikasi + adapter penyedia.
+── config/       Konfigurasi TypeScript bersama.
 
 tools/
-├── legacy/       Perkakas migrasi data bot v0.4.
-└── scripts/      Pemeriksaan dokumentasi & aturan arsitektur.
+── legacy/       Perkakas migrasi data bot v0.4 → v2.
+── scripts/      Pemeriksaan dokumentasi, arsitektur, dan uji E2E.
 
 docs/             21 dokumen wajib (semua Bahasa Indonesia).
-infra/            Berkas deployment & docker-compose.
+infra/            Dockerfile, docker-compose, pm2.
 ```
 
 ---
@@ -130,9 +137,10 @@ kebenaran akhir ada di tabel `member_roles` → `roles` → `role_permissions`.
 | Pemohon ≠ pemberi persetujuan | Trigger `trg_no_self_approval_*` |
 | IZIN/SAKIT wajib alasan | Check constraint + service |
 | Absensi idempotent | `UNIQUE (session_id, idempotency_key)` |
-| Pembayaran tidak dobel | `UNIQUE (organization_id, referensi_provider)` |
+| Pembayaran tidak dapat di-settle dua kali | `UNIQUE (organization_id, referensi_provider)` |
 | Member tidak dihapus | Soft delete (`diarsipkan_pada`) |
 | Periode lama tidak hilang | Periode lama jadi `ARCHIVED` |
+| Sumber absensi bukan dari klien | `tentukanSumber()` dari header/UA |
 
 ---
 
@@ -163,8 +171,10 @@ API, baru pakai di client. Jangan sebaliknya.
 - **Semua** komentar, nama variabel, nama fungsi, pesan galat, label UI, dan
   teks dokumentasi memakai **Bahasa Indonesia**.
 - Istilah teknis (`endpoint`, `commit`, `token`, `middleware`) boleh.
+- **Nama kolom database dalam bahasa Indonesia.** Nama properti TypeScript juga
+  camelCase Bahasa Indonesia (`dibuatPada`, `diubahPada`, `dibuatOleh`).
+  Konversi ke `snake_case` dilakukan Drizzle lewat `casing: 'snake_case'`.
 - TypeScript strict. Hindari `any`; pakai tipe dari kontrak.
-- Jangan menambah dependensi tanpa alasan kuat yang tertulis di AGENTS.md.
 - Kesalahan selalu berbentuk:
   ```json
   { "error": { "code": "...", "message": "...", "requestId": "..." } }
@@ -177,13 +187,16 @@ API, baru pakai di client. Jangan sebaliknya.
 - Skema didefinisikan di `packages/db/src/schema/*.ts` (Drizzle).
 - Setelah mengubah skema:
   ```bash
-  pnpm --filter @osda/db generate   # membuat berkas migrasi
-  pnpm db:migrate                   # terapkan
+  pnpm --filter @osda/db build     # paket db harus di-build ulang!
+  pnpm db:generate                 # membuat berkas migrasi
+  pnpm db:migrate                  # terapkan
   ```
 - **Jangan pernah** memakai `db:push` di staging/production.
 - Invariant berada di `packages/db/src/sql/invariants.ts` — letakkan aturan
   yang tidak boleh dilanggar di sana, bukan di kode aplikasi saja.
 - Nominal uang adalah bilangan bulat rupiah penuh (`bigint` mode `number`).
+- Mengubah hanya nama properti TypeScript (bukan nama kolom) **tidak**
+  memerlukan migrasi.
 
 ---
 
@@ -194,28 +207,34 @@ API, baru pakai di client. Jangan sebaliknya.
    `ambilPengguna(permintaan)` dari `common/utilitas/pengguna-permintaan.ts`.
    Salah baca di sini menyebabkan 401 palsu.
 2. **`import type` untuk kelas yang di-inject Nest.** Harus `import` biasa,
-  dan tambahkan `@Inject(Kelas)` pada parameter constructor.
+   dan tambahkan `@Inject(Kelas)` pada parameter constructor.
 3. **Identifier dengan tanda hubung** (`rata-rataHadir`) — TypeScript
    mengeparsanya sebagai pengurangan. Gunakan `rataRataHadir`.
 4. **Menyimpan saldo kas sebagai angka tunggal.** Saldo selalu dihitung dari
    `ledger_entries`.
 5. **Menghapus anggota secara keras.** Gunakan arsip agar histori utuh.
+6. **Unique constraint pada jadwal rapat.** Dua rapat boleh berjalan di jam
+   sama (mis. paralel antar divisi). Tabrakan jadwal adalah peringatan, bukan error.
+7. **Sumber absensi diambil dari badan permintaan.** Klien boleh memalsukan
+   nilainya. Pakai `tentukanSumber()`.
 
 ---
 
 ## 11. Alur Kerja yang Disarankan untuk AI Agent
 
 1. Baca dokumen terkait di `docs/` (setiap modul punya sendiri).
-2. Periksa `pnpm typecheck` — harus hijau SEBELUM mengubah apa pun.
+2. Jalankan `pnpm typecheck` — harus hijau SEBELUM mengubah apa pun.
 3. Kerjakan perubahan SATU modul.
 4. Jalankan `pnpm typecheck` lagi.
-5. Jalankan `pnpm check:architecture` bila menyentuh akses data.
-6. Perbarui dokumen modul bila perilaku berubah.
-7. **Jangan commit kecuali diminta.**
+5. Jalankan `pnpm test` bila menyentuh domain, kontrak, atau token.
+6. Jalankan `pnpm check:architecture` bila menyentuh akses data.
+7. Jalankan `pnpm e2e` bila menyentuh absensi, rapat, atau otorisasi.
+8. Perbarui dokumen modul bila perilaku berubah.
+9. **Jangan commit kecuali diminta.**
 
 ---
 
-## 12. Gemini/Claude Collaboration
+## 12. Kolaborasi Antar AI Agent
 
 Bila menggunakan beberapa agent sekaligus:
 
@@ -223,7 +242,23 @@ Bila menggunakan beberapa agent sekaligus:
 - **Tugas read-only** (riset, review dokumentasi) boleh paralel.
 - Setelah agent selesai, selalu jalankan `pnpm typecheck` sebagai verifikasi
   tunggal — jangan percaya laporan agent.
-- Sebelum konfirmasi: bacalah `git status` dan `git diff` sebelum commit.
+- Sebelum commit: bacalah `git status` dan `git diff`.
+
+---
+
+## 13. Letak Hal-Hal Penting
+
+| Hal | Lokasi |
+|---|---|
+| Izin & enum | `packages/contracts/src/permissions.ts`, `enums.ts` |
+| Tabel database | `packages/db/src/schema/*.ts` |
+| Trigger invariant | `packages/db/src/sql/invariants.ts` |
+| Validasi masukan | `@osda/contracts` (Zod) + `common/pipes/validation.pipe.ts` |
+| Penjaga otorisasi | `apps/api/src/auth/guards/` |
+| Deteksi kanal | `apps/api/src/common/utilitas/sumber-kanal.ts` |
+| Format galat | `apps/api/src/common/galat.ts` |
+| Uji E2E | `tools/scripts/e2e-absensi.mjs` |
+| Konfigurasi agent | `opencode.json` |
 
 ---
 

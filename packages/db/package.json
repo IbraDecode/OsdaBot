@@ -4,14 +4,35 @@
   "private": true,
   "description": "Skema database OSDA (Drizzle ORM) dan utilitas koneksi PostgreSQL.",
   "type": "module",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts",
-    "./schema": "./src/schema/index.ts",
-    "./client": "./src/client.ts",
-    "./tx": "./src/tx.ts",
-    "./sql": "./src/sql/invariants.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json",
+    "./schema": {
+      "types": "./schema/index.d.ts",
+      "import": "./schema/index.js",
+      "default": "./schema/index.js"
+    },
+    "./client": {
+      "types": "./client.d.ts",
+      "import": "./client.js",
+      "default": "./client.js"
+    },
+    "./tx": {
+      "types": "./tx.d.ts",
+      "import": "./tx.js",
+      "default": "./tx.js"
+    },
+    "./sql": {
+      "types": "./dist/sql/invariants.d.ts",
+      "import": "./dist/sql/invariants.js",
+      "default": "./dist/sql/invariants.js"
+    }
   },
   "scripts": {
     "generate": "drizzle-kit generate",
@@ -23,7 +44,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "test": "vitest run",
-    "build": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist .turbo drizzle"
   },
   "dependencies": {
@@ -44,5 +65,8 @@
     "tsx": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
-  }
+  },
+  "files": [
+    "dist"
+  ]
 }

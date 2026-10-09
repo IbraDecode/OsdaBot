@@ -340,10 +340,10 @@ export const activityLog = pgTable(
     /** Diolak oleh CSRF-like guard: user tidak boleh melihat entitas yang tidak diizinkan. */
     divisionId: uuid('division_id').references(() => divisions.id, { onDelete: 'set null' }),
     programId: uuid('program_id').references(() => programs.id, { onDelete: 'set null' }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().default(sql`now()`),
+    dibuatPada: timestamp('created_at', { withTimezone: true }).notNull().default(sql`now()`),
   },
   (t) => [
-    index('idx_activity_org_created').on(t.organizationId, t.createdAt),
+    index('idx_activity_org_created').on(t.organizationId, t.dibuatPada),
     index('idx_activity_entitas').on(t.entitasJenis, t.entitasId),
     index('idx_activity_actor').on(t.actorId),
     index('idx_activity_division').on(t.divisionId),
@@ -382,11 +382,11 @@ export const auditLogs = pgTable(
     fieldDiubah: text('field_diubah'),
     berhasil: boolean('berhasil').notNull().default(true),
     pesanGalat: text('pesan_galat'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().default(sql`now()`),
+    dibuatPada: timestamp('created_at', { withTimezone: true }).notNull().default(sql`now()`),
   },
   (t) => [
-    index('idx_audit_org_created').on(t.organizationId, t.createdAt),
-    index('idx_audit_aksi').on(t.aksi, t.createdAt),
+    index('idx_audit_org_created').on(t.organizationId, t.dibuatPada),
+    index('idx_audit_aksi').on(t.aksi, t.dibuatPada),
     index('idx_audit_entitas').on(t.entitasTabel, t.entitasId),
     index('idx_audit_actor').on(t.actorId),
     index('idx_audit_request').on(t.requestId),
@@ -487,13 +487,13 @@ export const webhookEvents = pgTable(
     pesanGalat: text('pesan_gagal'),
     /** Payload mentah disimpan untuk investigasi (tanpa secret). */
     payload: jsonb('payload').notNull().default({}),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().default(sql`now()`),
+    dibuatPada: timestamp('created_at', { withTimezone: true }).notNull().default(sql`now()`),
     diprosesPada: timestamp('diproses_pada', { withTimezone: true }),
   },
   (t) => [
     // Idempotent: satu event provider hanya boleh diproses sekali.
     uniqueIndex('uq_webhook_event').on(t.provider, t.eventId),
-    index('idx_webhook_diproses').on(t.diproses, t.createdAt),
+    index('idx_webhook_diproses').on(t.diproses, t.dibuatPada),
   ],
 );
 

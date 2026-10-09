@@ -7,6 +7,7 @@ import { auditLogs } from '@osda/db';
 import { LayananDatabase } from '../../database/database.service.js';
 import type { KonteksAktorPermintaan, PenggunaPermintaan } from '../tipe.js';
 import { galatIzinDitolak } from '../galat.js';
+import { tentukanSumberAudit } from './sumber-kanal.js';
 
 /**
  * Pastikan organisasi konteks tersedia.
@@ -33,11 +34,13 @@ export function konteksAktor(
   pengguna: PenggunaPermintaan | undefined,
   organizationId: string | null,
   requestId: string,
+  permintaan?: { headers?: Record<string, string | string[] | undefined> },
 ): KonteksAktorPermintaan {
   return {
     userId: pengguna?.sub ?? null,
     organizationId,
-    sumber: 'API',
+    // Sumber mengikuti kanal permintaan (API / WHATSAPP), bukan hardcode.
+    sumber: tentukanSumberAudit(permintaan),
     requestId,
     ip: null,
     userAgent: null,

@@ -29,6 +29,7 @@ import {
   type PayloadTutupSesi,
   type RekapSesi,
   type RingkasanAnggotaAbsen,
+  type SumberAbsensi,
   type SesiAbsensi,
   type StatusHadir,
   type StatusSesi,
@@ -43,6 +44,7 @@ import {
 import { offsetDari } from '../../common/utilitas/paginasi.js';
 import { pastikanOrganisasiAktif } from '../../common/utilitas/konteks.js';
 import type { PermintaanBerkonteks, PenggunaPermintaan } from '../../common/tipe.js';
+import { tentukanSumber } from '../../common/utilitas/sumber-kanal.js';
 import { LayananDatabase } from '../../database/database.service.js';
 import { KONFIGURASI, type Konfigurasi } from '../../config/konfigurasi.js';
 
@@ -287,7 +289,7 @@ export class AttendanceService {
     masukan: PayloadCatatHadir,
     permintaan: PermintaanBerkonteks,
     pengguna: PenggunaPermintaan,
-  ): Promise<{ id: string; status: StatusHadir; sudahAda: boolean }> {
+  ): Promise<{ id: string; status: StatusHadir; sumber: SumberAbsensi; sudahAda: boolean }> {
     const db = await this.dbSvc.ambilDb();
 
     if (!ALASAN_HADIR_WAJB.includes(masukan.status) && masukan.alasan) {
@@ -324,7 +326,15 @@ export class AttendanceService {
           ),
         )
         .limit(1);
-      if (lama) return { id: lama.id, status: lama.status, sudahAda: true };
+      if (lama) {
+        // Aman diulang: kembalikan catatan yang sama, jangan buat yang baru.
+        return {
+          id: lama.id,
+          status: lama.status,
+          sumber: lama.sumber,
+          sudahAda: true,
+        };
+      }
     }
 
     const [ada] = await db
@@ -352,14 +362,22 @@ export class AttendanceService {
         status: masukan.status,
         alasan: masukan.alasan ?? null,
         catatan: masukan.catatan ?? null,
-        sumber: masukan.tokenQr ? 'QR' : 'WEB',
+        // Sumber ditentukan dari kanal permintaan (Web / Mobile / WhatsApp),
+        // BUKAN selalu 'WEB'. Tanpa ini absensi dari WhatsApp akan tercampur
+        // dengan absensi Web sehingga laporan menjadi tidak dipercaya.
+        sumber: masukan.tokenQr ? 'QR' : tentukanSumber(permintaan),
         menitKeterlambatan: null,
         idempotencyKey: masukan.idempotencyKey ?? null,
       })
       .returning();
 
     if (!baru) throw galatValidasi(undefined, 'Gagal mencatat kehadiran.');
-    return { id: baru.id, status: baru.status, sudahAda: false };
+    return {
+      id: baru.id,
+      status: baru.status,
+      sumber: baru.sumber,
+      sudahAda: false,
+    };
   }
 
   /** Ubah status kehadiran manual oleh pengurus (perubahan tercatat). */

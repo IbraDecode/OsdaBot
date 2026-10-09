@@ -52,8 +52,8 @@ export class AuditService {
     if (skema.aksi) syarat.push(eq(auditLogs.aksi, skema.aksi));
     if (skema.entitasTabel) syarat.push(eq(auditLogs.entitasTabel, skema.entitasTabel));
     if (skema.actorId) syarat.push(eq(auditLogs.actorId, skema.actorId));
-    if (skema.dari) syarat.push(gte(auditLogs.createdAt, new Date(skema.dari)));
-    if (skema.sampai) syarat.push(lte(auditLogs.createdAt, new Date(`${skema.sampai}T23:59:59`)));
+    if (skema.dari) syarat.push(gte(auditLogs.dibuatPada, new Date(skema.dari)));
+    if (skema.sampai) syarat.push(lte(auditLogs.dibuatPada, new Date(`${skema.sampai}T23:59:59`)));
     if (skema.q) {
       const pola = `%${skema.q}%`;
       syarat.push(or(like(auditLogs.aksi, pola), like(auditLogs.entitasTabel, pola)) as never);
@@ -70,7 +70,7 @@ export class AuditService {
       .select()
       .from(auditLogs)
       .where(and(...syarat))
-      .orderBy(desc(auditLogs.createdAt))
+      .orderBy(desc(auditLogs.dibuatPada))
       .limit(skema.limit)
       .offset((skema.page - 1) * skema.limit);
 
@@ -190,7 +190,8 @@ export class AuditService {
       fieldDiubah: b.fieldDiubah,
       berhasil: b.berhasil,
       pesanGalat: b.pesanGalat,
-      createdAt: b.createdAt.toISOString(),
+      // Kontrak API memakai nama `createdAt`; nama kolomnya `created_at`.
+      createdAt: b.dibuatPada.toISOString(),
     };
   }
 }

@@ -334,11 +334,11 @@ export const ledgerEntries = pgTable(
     debit: uang('debit').notNull().default(0),
     kredit: uang('kredit').notNull().default(0),
     /** Saldo berjalan akun (denormalisasi, dipertahankan oleh trigger). */
-    saldoRunnable: uang('saldo_berjalan').notNull().default(0),
+    saldoBerjalan: uang('saldo_berjalan').notNull().default(0),
     narration: text('narration'),
-    createdAt: dibuatPada(),
+    dibuatPada: dibuatPada(),
     /** Jejak sumber (mobile/web/bot/system). */
-    createdBy: uuid('created_by').references(() => members.id, { onDelete: 'set null' }),
+    dibuatOleh: uuid('created_by').references(() => members.id, { onDelete: 'set null' }),
   },
   (t) => [
     index('ix_ledger_akun_tanggal').on(t.accountId, t.tanggal),
