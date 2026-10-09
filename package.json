@@ -32,7 +32,8 @@
     "legacy:bersihkan-sandi": "node tools/legacy/scripts/bersihkan-sandi-migrasi.mjs",
     "akun-uji": "node tools/scripts/buat-akun-uji.mjs",
     "akun-daftar": "node tools/scripts/kelola-akun.mjs daftar",
-    "e2e:invariant": "node tools/scripts/e2e-invariant.mjs"
+    "e2e:invariant": "node tools/scripts/e2e-invariant.mjs",
+    "e2e:alur": "node tools/scripts/e2e-alur.mjs"
   },
   "devDependencies": {
     "turbo": "^2.11.7",

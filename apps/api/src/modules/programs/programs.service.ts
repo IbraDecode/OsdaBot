@@ -37,6 +37,7 @@ import { offsetDari } from '../../common/utilitas/paginasi.js';
 import { pastikanOrganisasiAktif } from '../../common/utilitas/konteks.js';
 import { kodeDenganAwalan } from '../../common/utilitas/kode.js';
 import type { PermintaanBerkonteks, PenggunaPermintaan } from '../../common/tipe.js';
+import { pastikanIzin } from '../../auth/guards/izin.guard.js';
 import { LayananDatabase } from '../../database/database.service.js';
 
 @Injectable()
@@ -199,6 +200,19 @@ export class ProgramsService {
     const db = await this.dbSvc.ambilDb();
     const program = await this.ambilProgram(db, id, permintaan, pengguna);
     const tujuan = masukan.status;
+
+    // Menyetujui program adalah wewenang tersendiri. Endpoint hanya meminta
+    // `program.manage`, jadi pemeriksaan here perlu membedakan:
+    //  - menuju APPROVED            -> butuh `program.approve`
+    //  - memakai jalur koreksi       -> butuh `program.approve`
+    //  - transisi biasa selebihnya    -> `program.manage` sudah cukup
+    //
+    // Tanpa pemisahan ini, `koreksiPrivileged` jadi pintu belakang yang
+    // membuat aturan "program tidak boleh mundur" tidak berarti apa-apa:
+    // siapa pun pemilik program bisa menyalakannya.
+    if (tujuan === 'APPROVED' || masukan.koreksiPrivileged) {
+      pastikanIzin(pengguna, ['program.approve']);
+    }
 
     const sah = masukan.koreksiPrivileged
       ? TRANSISI_KOREKSI_PROGRAM[program.status].includes(tujuan)
@@ -388,6 +402,7 @@ export class ProgramsService {
       tim: tim.map((t) => ({ memberId: t.memberId, nama: t.nama, peran: t.peran, jabatan: null })),
       indikator: [...b.indikator],
       dibuatPada: String(b.dibuatPada),
+      disetujuiOleh: b.disetujuiOleh ?? null,
       disetujuiPada: b.disetujuiPada ? String(b.disetujuiPada) : null,
     };
   }

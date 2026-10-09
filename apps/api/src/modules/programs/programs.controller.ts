@@ -2,8 +2,8 @@
  * ProgramsController — program kerja.
  *
  * Izin: `program.read` untuk membaca, `program.create` untuk membuat,
- * `program.manage` untuk mengubah tim/milestone/evaluasi, `program.approve`
- * untuk persetujuan perubahan status program.
+ * `program.manage` untuk mengubah status, tim, milestone, dan evaluasi,
+ * `program.approve` untuk menyetujui program serta memakai jalur koreksi.
  */
 import { Controller, Get, HttpCode, HttpStatus, Patch, Post, Inject} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -88,7 +88,11 @@ export class ProgramsController {
 
   @Post(':id/status')
   @HttpCode(HttpStatus.OK)
-  @Izin('program.approve')
+  // Hanya `program.manage` di tingkat endpoint. Menyetujui program
+  // (`program.approve`) diperiksa di service berdasarkan status TUJUAN:
+  // koordinator pemilik program harus bisa menjalankan DRAFT → PROPOSED →
+  // PLANNED → RUNNING tanpa harus memegang wewenang menyetujui.
+  @Izin('program.manage')
   @ApiOperation({ summary: 'Ubah status program (transisi divalidasi kontrak)' })
   @ApiResponse({ status: 409, description: 'Transisi status tidak diizinkan' })
   ubahStatus(

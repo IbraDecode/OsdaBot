@@ -84,6 +84,13 @@ export interface Program {
   readonly tim: readonly { memberId: string; nama: string; peran: string; jabatan: string | null }[];
   readonly indikator: readonly string[];
   readonly dibuatPada: string;
+  /**
+   * Siapa yang menyetujui program.
+   *
+   * Wajib ditampilkan, bukan hanya `disetujuiPada`: tanpa identitas pelaku,
+   * "program sudah disetujui" tidak bisa ditelusuri accountable-nya.
+   */
+  readonly disetujuiOleh: string | null;
   readonly disetujuiPada: string | null;
 }
 

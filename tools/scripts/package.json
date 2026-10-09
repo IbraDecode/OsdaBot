@@ -12,7 +12,8 @@
     "akun-daftar": "node kelola-akun.mjs daftar",
     "akun-buka-kunci": "node kelola-akun.mjs buka-kunci",
     "akun-sandi": "node kelola-akun.mjs sandi",
-    "e2e-invariant": "node e2e-invariant.mjs"
+    "e2e-invariant": "node e2e-invariant.mjs",
+    "e2e-alur": "node e2e-alur.mjs"
   },
   "dependencies": {
     "postgres": "^3.4.7",

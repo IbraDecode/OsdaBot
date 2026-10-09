@@ -71,11 +71,43 @@ Fungsi pemeriksa: `bolehTransisiProgram(dari, ke)`. Keduanya diekspos ulang oleh
 
 ### Aturan pemakaian
 
-- `POST /api/v1/programs/:id/status` memerlukan izin **`program.approve`**.
-- Mengajukan program (`DRAFT → PROPOSED`) biasanya memakai `program.create`.
-- Transisi yang tidak sah menghasilkan galat `INVALID_STATE_TRANSITION` (HTTP 409).
-- `CANCELLED` **wajib** membawa `alasan_pembatalan`; `APPROVED` menolak `PROPOSED`
-  bila alasan penolakan diisi. Validasi ada di service, bukan di database.
+Endpoint `POST /api/v1/programs/:id/status` hanya memerlukan **`program.manage`**.
+Pemeriksaan tambahan ada di service, karena izin yang dibutuhkan berbeda menurut
+status tujuan:
+
+| Situasi | Izin yang dibutuhkan | Bila kurang |
+|---|---|---|
+| Transisi biasa (`DRAFT → PROPOSED`, `PLANNED → RUNNING`, …) | `program.manage` | 403 |
+| Menuju `APPROVED` | `program.approve` | 403 |
+| `koreksiPrivileged: true` | `program.approve` | 403 |
+
+Jadi alur normal melibatkan dua aktor: koordinator pemilik program
+(`program.manage`) menggerakkan status, ketua (`program.approve`) yang
+menyetujui. Sebelumnya endpoint menuntut `program.approve` untuk **semua**
+transisi — akibatnya koordinator tidak pernah bisa menjalankan programnya
+sendiri.
+
+`koreksiPrivileged` **wajib** memakai `program.approve`. Tanpa pemeriksaan ini
+flag tersebut menjadi pintu belakang: siapa pun pemilik program bisa menyalakannya
+dan aturan "program tidak boleh mundur" kehilangan makna.
+
+Lain-lain:
+
+- Transisi yang tidak sah menghasilkan `INVALID_STATE_TRANSITION` (HTTP 409).
+- `CANCELLED` **wajib** membawa `alasan_pembatalan`.
+- Respons program menyertakan `disetujuiOleh` — bukan hanya `disetujuiPada`,
+  sehingga "sudah disetujui" bisa ditelusuri sampai pelakunya.
+
+### Membuktikan aturan ini
+
+```bash
+pnpm e2e:alur   # 36 pemeriksaan
+```
+
+`tools/scripts/e2e-alur.mjs` menjalankan alur program dengan tiga aktor nyata
+(sekretaris, koordinator, ketua) dan membuktikan: transisi lompat ditolak,
+pembagian wewenang berjalan, koreksi privileged hanya untuk holder
+`program.approve`, dan `COMPLETED` tidak bisa mundur tanpa koreksi.
 
 ---
 
@@ -255,7 +287,7 @@ storage; tabel ini hanya menyimpan metadata — lihat `DOCUMENTS.md`.
 | `GET` | `/api/v1/programs/:id` | `program.read` |
 | `POST` | `/api/v1/programs` | `program.create` |
 | `PATCH` | `/api/v1/programs/:id` | `program.manage` |
-| `POST` | `/api/v1/programs/:id/status` | `program.approve` |
+| `POST` | `/api/v1/programs/:id/status` | `program.manage` (+ `program.approve` untuk `APPROVED` & koreksi) |
 | `POST` | `/api/v1/programs/:id/tim` | `program.manage` |
 | `POST` | `/api/v1/programs/:id/milestones` | `program.manage` |
 | `POST` | `/api/v1/programs/:id/evaluasi` | `program.manage` |

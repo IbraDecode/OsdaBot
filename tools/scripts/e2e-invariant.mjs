@@ -143,6 +143,7 @@ async function main() {
     await trx.unsafe(`alter table ledger_entries disable trigger trg_ledger_immutable`);
     await trx`delete from ledger_entries where narration like 'Uji invariant%'`;
     await trx.unsafe(`alter table ledger_entries enable trigger trg_ledger_immutable`);
+    await trx`delete from payments where kode like 'UJI-%'`;
     await trx`delete from transactions where kode like 'UJI-%'`;
     await trx`delete from expense_requests where kode like 'UJI-%'`;
     await trx`delete from reimbursements where kode like 'UJI-%'`;
@@ -358,15 +359,82 @@ async function main() {
     `update transactions set saldo = 0 where id = $1`, [trxUji.id]);
 
   // ==============================================================
-  console.log('\n7. HANYA SATU PERIODE AKTIF PER ORGANISASI');
+  console.log('\n7. PEMBAYARAN TIDAK BOLEH DI-SETTLE DUA KALI');
   // ==============================================================
-  await harusDitolak(db, 'periode aktif kedua ditolak',
+  // Trigger `trg_payment_settle_once` hanya menyala bila ada baris `payments`.
+  // Sulei tidak ada data payments di database, trigger ini TIDAK PERNAH
+  // menyala selama pengujian sebelumnya — sekarang dibuatkan baris nyata.
+  const [trxSatu] = await db`
+    insert into transactions (organization_id, financial_period_id, kode, jenis,
+                             arah, account_id, nominal, keterangan, tanggal, status)
+    values (${orgId}, ${periode.id}, ${kode('P1')}, 'INCOME', 'IN',
+            ${akunKas.id}, 75000, 'Pembayaran uji 1', current_date, 'POSTED')
+    returning id`;
+  const [trxDua] = await db`
+    insert into transactions (organization_id, financial_period_id, kode, jenis,
+                             arah, account_id, nominal, keterangan, tanggal, status)
+    values (${orgId}, ${periode.id}, ${kode('P2')}, 'INCOME', 'IN',
+            ${akunKas.id}, 75000, 'Pembayaran uji 2', current_date, 'POSTED')
+    returning id`;
+
+  const [bayar] = await db`
+    insert into payments (organization_id, kode, member_id, jenis, nominal, metode,
+                          status, idempotency_key, referensi_provider,
+                          kedaluwarsa_pada, dibayar_pada, transaksi_id)
+    values (${orgId}, ${kode('PAY')}, ${anggota.id}, 'IURAN', 75000, 'QRIS',
+            'PAID', ${kode('IDEM')}, ${kode('REF')},
+            current_date + 30, current_date, ${trxSatu.id})
+    returning id`;
+
+  await harusDitolak(db, 'pembayaran PAID tidak boleh di-settle ke transaksi lain',
+    `update payments set transaksi_id = $1 where id = $2`, [trxDua.id, bayar.id]);
+
+  // Transaksi yang sama TIDAK boleh dipakai pembayaran kedua.
+  const [bayar2] = await db`
+    insert into payments (organization_id, kode, member_id, jenis, nominal, metode,
+                          status, idempotency_key, referensi_provider,
+                          kedaluwarsa_pada, dibayar_pada, transaksi_id)
+    values (${orgId}, ${kode('PAY2')}, ${anggota.id}, 'IURAN', 75000, 'QRIS',
+            'PAID', ${kode('IDEM2')}, ${kode('REF2')},
+            current_date + 30, current_date, ${trxSatu.id})
+    returning id`;
+  await harusDitolak(db, 'pembayaran kedua ke transaksi sama ditolak',
+    `update payments set transaksi_id = $1 where id = $2`, [trxDua.id, bayar2.id]);
+
+  // Mengubah kolom lain pada baris PAID harus tetap boleh.
+  await harusBerhasil(db, 'pembayaran PAID boleh diubah kolom lain',
+    `update payments set bukti_transfer = 'bukti' where id = $1`, [bayar.id]);
+
+  // Idempotensi & referensi provider harus unik.
+  await harusDitolak(db, 'idempotency_key pembayaran ganda ditolak',
+    `insert into payments (organization_id, kode, member_id, jenis, nominal, metode,
+        status, idempotency_key, kedaluwarsa_pada)
+     values (${orgId}, ${kode('PAY3')}, ${anggota.id}, 'IURAN', 75000, 'QRIS',
+             'PENDING', ${kode('IDEM')}, current_date + 30)`);
+  await harusDitolak(db, 'referensi_provider yang sama ditolak',
+    `insert into payments (organization_id, kode, member_id, jenis, nominal, metode,
+        status, idempotency_key, referensi_provider, kedaluwarsa_pada)
+     values (${orgId}, ${kode('PAY4')}, ${anggota.id}, 'IURAN', 75000, 'QRIS',
+             'PENDING', ${kode('IDEM4')}, ${kode('REF')}, current_date + 30)`);
+
+  // ==============================================================
+  console.log('\n8. HANYA SATU PERIODE KEUANGAN AKTIF');
+  // ==============================================================
+  await harusDitolak(db, 'periode keuangan OPEN kedua ditolak',
+    `insert into financial_periods (organization_id, nama, tanggal_mulai,
+        tanggal_selesai, status)
+     values (${orgId}, 'Periode Uji Ganda', current_date, current_date + 365, 'OPEN')`);
+
+  // ==============================================================
+  console.log('\n9. HANYA SATU PERIODE KEPENGURUSAN AKTIF');
+  // ==============================================================
+  await harusDitolak(db, 'periode kepengurusan aktif kedua ditolak',
     `insert into organization_periods (organization_id, nama, tanggal_mulai,
         tanggal_selesai, status)
      values (${orgId}, 'Periode Uji Ganda', current_date, current_date + 365, 'ACTIVE')`);
 
   // ==============================================================
-  console.log('\n8. MEMBER TIDAK BISA DIHAPUS KERAS');
+  console.log('\n10. MEMBER TIDAK BISA DIHAPUS KERAS');
   // ==============================================================
   // Cascade dari sessions/attendance_records bisa saja menghapus member.
   // Yang dijaga trigger/constraint adalah: member tidak punya kolom
@@ -380,6 +448,7 @@ async function main() {
   // ==============================================================
   // Bersihkan sisa uji.
   // ==============================================================
+  const polaBayar = `${kode('PAY')}%`;
   await db.begin(async (trx) => {
     // Ledger & audit log bersifat immutable — trigger-nya dimatikan HANYA
     // untuk menghapus baris uji ini, lalu langsung dinyalakan lagi.
@@ -389,6 +458,9 @@ async function main() {
     await trx`delete from transactions where id = ${trxUji.id}`;
     await trx`delete from expense_requests where kode = ${kode('SB')}`;
     await trx`delete from reimbursements where kode = ${kode('SR')}`;
+    await trx`delete from payments where kode like ${polaBayar}`;
+    await trx`delete from transactions
+      where kode = ${kode('P1')} or kode = ${kode('P2')}`;
     await trx.unsafe(`alter table audit_logs disable trigger trg_audit_append_only`);
     await trx`delete from audit_logs where aksi = 'UJI_INVARIAN'`;
     await trx.unsafe(`alter table audit_logs enable trigger trg_audit_append_only`);

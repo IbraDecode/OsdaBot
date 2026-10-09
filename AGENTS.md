@@ -46,7 +46,8 @@ node tools/legacy/scripts/reconcile.mjs      # verifikasi (harus 0 selisih)
 
 # Uji end-to-end (butuh API hidup di port 4000)
 pnpm e2e                        # 28 pemeriksaan alur absensi
-pnpm e2e:invariant              # 30 pemeriksaan invariant database (butuh DB)
+pnpm e2e:invariant              # 36 pemeriksaan invariant database (butuh DB)
+pnpm e2e:alur                   # 36 pemeriksaan alur tugas & program
 pnpm akun-uji                   # buat 1 akun uji per peran
 pnpm --filter @osda/tools e2e-izin   # 61 pemeriksaan batas izin
 
@@ -140,6 +141,7 @@ kebenaran akhir ada di tabel `member_roles` → `roles` → `role_permissions`.
 | Aturan | Cara menegakkan |
 |---|---|
 | **DONE ≠ VERIFIED** | `Tugas.verifikasi` terpisah; izin `task.verify` |
+| Koreksi program butuh wewenang tinggi | `program.approve` untuk `koreksiPrivileged` |
 | Program tidak bisa mundur bebas | `bolehTransisiProgram()` dari kontrak |
 | Notulen APPROVED immutable | Versi baru + trigger `document_versions` |
 | Ledger immutable | Trigger `trg_ledger_immutable` |
@@ -274,8 +276,9 @@ API, baru pakai di client. Jangan sebaliknya.
    atau cakupan.
 9. Jalankan `pnpm e2e:invariant` bila menyentuh `invariants.ts`, skema, atau
    alur keuangan.
-10. Perbarui dokumen modul bila perilaku berubah.
-11. **Jangan commit kecuali diminta.**
+10. Jalankan `pnpm e2e:alur` bila menyentuh tugas, program, atau transisi status.
+11. Perbarui dokumen modul bila perilaku berubah.
+12. **Jangan commit kecuali diminta.**
 
 ---
 
