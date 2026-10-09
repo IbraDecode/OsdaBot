@@ -1,0 +1,61 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "stream",
+  "globalEnv": [
+    "NODE_ENV",
+    "DATABASE_URL",
+    "REDIS_URL",
+    "JWT_SECRET",
+    "JWT_REFRESH_SECRET",
+    "WHATSAPP_ENABLED",
+    "WHATSAPP_PHONE_NUMBER",
+    "STORAGE_ENDPOINT",
+    "STORAGE_BUCKET",
+    "STORAGE_ACCESS_KEY_ID",
+    "STORAGE_SECRET_ACCESS_KEY"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**", "build/**"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "lint": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "clean": {
+      "cache": false
+    },
+    "db:generate": {
+      "cache": false
+    },
+    "db:migrate": {
+      "cache": false
+    },
+    "db:push": {
+      "cache": false
+    },
+    "db:reset": {
+      "cache": false
+    },
+    "db:seed": {
+      "cache": false
+    },
+    "db:studio": {
+      "cache": false,
+      "persistent": true
+    }
+  }
+}

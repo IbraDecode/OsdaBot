@@ -1,0 +1,16 @@
+{
+  "extends": "@osda/config/base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["ES2023", "DOM"],
+    "types": ["node", "react"],
+    "noEmit": true,
+    "allowJs": true,
+    "moduleResolution": "Bundler",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "expo-env.d.ts"],
+  "exclude": ["node_modules", ".expo", "dist"]
+}

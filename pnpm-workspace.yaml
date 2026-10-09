@@ -1,0 +1,46 @@
+# ============================================================
+# OSDA Platform — Monorepo pnpm
+# Satu repo untuk seluruh client OSDA (API, Web, Mobile, Bot).
+# ============================================================
+
+# Daftar ditulis EKSPLISIT, bukan wildcard, agar ada client yang diabaikan
+# saat instalasi (lihat catatan `apps/mobile` di bawah).
+packages:
+  - 'apps/api'
+  - 'apps/web'
+  - 'apps/bot'
+  - 'packages/*'
+  - 'tools/legacy'
+  - 'tools/scripts'
+
+# CATATAN MOBILE
+# --------------
+# `apps/mobile` sengaja TIDAK ikut workspace instalasi.
+# Alasannya: Expo + React Native memerlukan toolchain native dan memori besar.
+# Pengembang memperlakukannya sebagai aplikasi mandiri:
+#   cd apps/mobile && pnpm install && pnpm dev
+# Kontrak API, permission, dan enum tetap dipakai dari `@osda/contracts`
+# (bisa ditambahkan kembali bila sudah ada toolchain native).
+# Lihat apps/mobile/README.md.
+
+# Versi dependency dipakai lintas paket, diatur di satu tempat agar
+# tidak terjadi konflik versi antar client.
+catalog:
+  typescript: 5.9.2
+  zod: ^4.6.5
+  drizzle-orm: 0.45.3
+  '@types/node': ^22.15.0
+  vitest: ^3.2.4
+  tsx: ^4.20.3
+
+# Paket internal tidak pernah diambil dari registry publik.
+linkWorkspacePackages: true
+
+# Paket yang diizinkan menjalankan build script saat instalasi.
+# argon2 = native binding untuk hash kata sandi; esbuild = bundler.
+allowBuilds:
+  '@scarf/scarf': true
+  '@whiskeysockets/baileys': true
+  argon2: true
+  esbuild: true
+  protobufjs: true

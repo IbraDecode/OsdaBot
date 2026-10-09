@@ -1,0 +1,19 @@
+{
+  "extends": "@osda/config/node.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "strictPropertyInitialization": false,
+    "useDefineForClassFields": false,
+    "noEmit": true,
+    "verbatimModuleSyntax": false,
+    "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

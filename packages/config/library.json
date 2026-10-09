@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "OSDA — Pustaka (tanpa emit)",
+  "extends": "./base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"],
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
+}

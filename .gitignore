@@ -1,0 +1,55 @@
+# ============================================================
+# OSDA Platform — .gitignore
+# ============================================================
+
+# Dependency
+node_modules/
+.pnpm-store/
+
+# Build
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Environment — JANGAN pernah commit
+.env
+.env.*
+!.env.example
+
+# WhatsApp session Baileys (sangat sensitif)
+auth_info_baileys/
+*.baileys/
+whatsapp-session/
+
+# Arsip & unggahan lokal
+.tmp/
+tmp/
+storage/
+uploads/
+
+# Log
+*.log
+logs/
+npm-debug.log*
+pnpm-debug.log*
+
+# Database lokal / cadangan
+*.sql.gz
+.pgdata/
+
+# Testing
+coverage/
+.nyc_output/
+
+# Editor
+.DS_Store
+.idea/
+*.swp
+
+# OS
+Thumbs.db
+
+# Turbo
+.turbo/

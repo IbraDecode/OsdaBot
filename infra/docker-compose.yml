@@ -1,0 +1,116 @@
+# ============================================================
+# OSDA Platform — Layanan Lokal
+# ============================================================
+# Jalankan:
+#   docker compose up -d postgres
+#   docker compose --profile app up -d
+#
+# CATATAN: berkas .env di root repository dipakai bersama oleh semua
+# service. Jangan pernah commit berkas .env yang sudah terisi.
+# ============================================================
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: osda-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-osda}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-osda-dev-password}
+      POSTGRES_DB: ${POSTGRES_DB:-osda}
+      # Locale & zona waktu sekolah
+      TZ: ${TZ:-Asia/Makassar}
+      PGTZ: ${TZ:-Asia/Makassar}
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-osda} -d ${POSTGRES_DB:-osda}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # Redis opsional. Bila kosong, API memakai fallback in-process untuk
+  # scheduler sehingga sistem tetap berjalan tanpa Redis (spesifikasi §82).
+  redis:
+    image: redis:8-alpine
+    container_name: osda-redis
+    restart: unless-stopped
+    profiles: ['queue']
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+      target: api
+    container_name: osda-api
+    restart: unless-stopped
+    profiles: ['app']
+    env_file:
+      - ../.env
+    environment:
+      NODE_ENV: production
+      API_PORT: 4000
+      API_HOST: 0.0.0.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - '${API_PORT:-4000}:4000'
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:4000/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  web:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+      target: web
+    container_name: osda-web
+    restart: unless-stopped
+    profiles: ['app']
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+    depends_on:
+      - api
+    ports:
+      - '${WEB_PORT:-3000}:3000'
+
+  bot:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+      target: bot
+    container_name: osda-bot
+    restart: unless-stopped
+    profiles: ['bot']
+    env_file:
+      - ../.env
+    environment:
+      NODE_ENV: production
+    depends_on:
+      - api
+    volumes:
+      # Kredensial Baileys = rahasia. Jangan pernah di-share.
+      - whatsapp-session:/app/whatsapp-session
+
+volumes:
+  postgres-data:
+  redis-data:
+  whatsapp-session:

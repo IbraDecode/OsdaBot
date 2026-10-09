@@ -1,0 +1,35 @@
+{
+  "name": "osda",
+  "version": "2.0.0",
+  "private": true,
+  "description": "OSDA Platform \u2014 OSIS Digital Administration & Operations Platform. Satu sistem untuk mengelola organisasi, satu sumber data untuk semua.",
+  "license": "MIT",
+  "packageManager": "pnpm@11.17.0",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "db:generate": "pnpm --filter @osda/db generate",
+    "db:migrate": "pnpm --filter @osda/db migrate",
+    "db:push": "pnpm --filter @osda/db push",
+    "db:reset": "pnpm --filter @osda/db reset",
+    "db:seed": "pnpm --filter @osda/db seed",
+    "db:studio": "pnpm --filter @osda/db studio",
+    "legacy:dump": "node tools/legacy/scripts/dump-legacy.mjs",
+    "legacy:migrate": "node tools/legacy/scripts/migrate-to-v2.mjs",
+    "legacy:reconcile": "node tools/legacy/scripts/reconcile.mjs",
+    "docs:check": "node tools/scripts/check-docs.mjs",
+    "check:architecture": "node tools/scripts/check-arquitektur.mjs"
+  },
+  "devDependencies": {
+    "turbo": "^2.11.7",
+    "typescript": "5.9.2",
+    "prettier": "^3.6.2"
+  }
+}

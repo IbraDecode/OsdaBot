@@ -1,0 +1,13 @@
+{
+  "name": "@osda/config",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Konfigurasi TypeScript bersama untuk seluruh paket OSDA.",
+  "files": ["base.json", "library.json", "nextjs.json", "node.json"],
+  "exports": {
+    "./base.json": "./base.json",
+    "./library.json": "./library.json",
+    "./nextjs.json": "./nextjs.json",
+    "./node.json": "./node.json"
+  }
+}

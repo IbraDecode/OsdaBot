@@ -1,0 +1,11 @@
+{
+  "name": "@osda/tools",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Perkakas pendukung repositori OSDA (pemeriksaan dokumentasi,.randgate,校验).",
+  "type": "module",
+  "scripts": {
+    "check-docs": "node check-docs.mjs",
+    "check-randgate": "node check-arquitektur.mjs"
+  }
+}

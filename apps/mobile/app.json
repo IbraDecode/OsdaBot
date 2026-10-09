@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "OSDA",
+    "slug": "osda",
+    "version": "2.0.0",
+    "orientation": "portrait",
+    "scheme": "osda",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "id.osis.osda",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "OSDA memakai Face ID untuk masuk dengan lebih aman.",
+        "NSCameraUsageDescription": "OSDA memakai kamera untuk memindai QR absensi."
+      }
+    },
+    "android": {
+      "package": "id.osis.osda",
+      "adaptiveIcon": {
+        "backgroundColor": "#0f172a"
+      },
+      "permissions": ["CAMERA", "INTERNET", "VIBRATE"]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
+    "plugins": ["expo-router", "expo-secure-store"],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
