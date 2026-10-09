@@ -53,17 +53,76 @@ cukup satu `UPDATE` pada `sessions.dicabut_pada` — token yang beredar langsung
 
 ### Pencegahan tebak sandi
 
-- `users.gagal_login_berturut` dihitung per akun.
-- `users.dikunci_sampai` menahan akun untuk sementara.
-- Rate limit per IP (bagian 2) membatasi percobaan di tingkat jaringan.
-- Endpoint publik (`@Publik()`) **tetap** dibatasi rate limit — jangan menganggap
-  `@Publik()` berarti tanpa batas.
+Tiga lapis, semuanya di backend:
+
+1. **Penguncian akun** — `apps/api/src/modules/auth/kebijakan-kunci.ts`.
+   Setiap kegagalan menambah `users.gagal_login_berturut`. Setelah 5 kegagalan,
+   `users.dikunci_sampai` diisi dan akun ditolak **meski kata sandinya benar**
+   selama masa kunci.
+
+   | Nilai `gagal_login_berturut` | Lama kunci |
+   |---|---|
+   | 0–4 | tidak dikunci |
+   | 5–9 | 15 menit |
+   | 10–14 | 30 menit |
+   | 15–19 | 60 menit |
+   | ≥ 20 | 60 menit, dibatasi maksimum 24 jam |
+
+   Lama kunci berlipat setiap kali ambang dilampaui, lalu dibatasi maksimum.
+   Responsnya `429 ACCOUNT_LOCKED` dengan `detail.cobaLagiDalamDetik`.
+
+   > Kolom `dikunci_sampai` bertipe **timestamp**, bukan `date`. Dengan `date`
+   > (presisi hari) "kunci 15 menit" akan terpotong jadi "sampai hari ini" dan
+   > penguncian jadi tidak berguna. Lihat `batasWaktu()` di
+   > `packages/db/src/schema/_base.ts`.
+
+2. **Rate limit per IP** (bagian 2) membatasi percobaan di tingkat jaringan,
+   sehingga satu penyerang tidak bisa mengunci banyak akun sekaligus.
+
+3. **Waktu respons seragam** — bila surel tidak terdaftar atau akun tidak punya
+   kata sandi, backend tetap menjalankan satu verifikasi argon2 lalu
+   membuang hasilnya. Tanpa ini, waktu respons yang lebih cepat membocorkan
+   alamat surel mana yang terdaftar.
+
+Pesan galat untuk "surel tidak ada" dan "sandi salah" sengaja sama persis.
+
+**Operasional** (tidak ada endpoint API untuk ini):
+
+```bash
+pnpm akun-daftar                     # daftar akun yang sedang terkunci
+pnpm --filter @osda/tools akun-buka-kunci <email>
+pnpm --filter @osda/tools akun-sandi <email> [sandi-baru]
+```
+
+### Akun tanpa kata sandi
+
+`users.password_hash` boleh `NULL`. Ini state yang sah untuk akun yang hanya
+masuk lewat identitas eksternal (WhatsApp). Such akun:
+
+- tidak bisa masuk lewat `POST /api/v1/auth/login` (butuh surel + sandi),
+- masuk lewat `POST /api/v1/auth/whatsapp/exchange` memakai kode yang dikirim
+  ke WhatsApp, lalu menetapkan kata sandi sendiri.
+
+Akun hasil migrasi dari bot v0.4 sengaja dibuat **tanpa** kata sandi —
+sebelumnya semuanya mendapat satu kata sandi placeholder yang tertulis di
+repo. Bersihkan dengan:
+
+```bash
+pnpm legacy:bersihkan-sandi
+```
 
 ### Otorisasi
 
 Lihat `AUTHORIZATION.md` dan `ROLE_MATRIX.md`. Ringkasnya: izin ada di dalam token,
 diperiksa `IzinGuard` di tingkat endpoint, diulang `pastikanIzin` di tingkat service, dan
 dilengkapi pemeriksaan kepemilikan objek di tingkat resource.
+
+Cakupan ditegakkan di lapisan service lewat
+`apps/api/src/common/utilitas/cakupan.ts`. Tanpa itu, izin `member.read`
+pada peran berkakupan `OWN` (mis. `MEMBER`) akan membuka daftar anggota
+seluruh organisasi beserta nomor telepon dan surelnya — `403 SCOPE_DENIED`
+justru lebih jujur daripada `404`: klien tahu datanya ada tapi di luar
+cakupan.
 
 ---
 

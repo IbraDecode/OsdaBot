@@ -28,6 +28,17 @@ export const diubahPada = () =>
 /** Soft delete: baris disembunyikan dari UI, histori tetap ada. */
 export const dihapusPada = () => timestamp('dihapus_pada', { withTimezone: true });
 
+/**
+ * Waktu BATAS — waktu sampai kapan sebuah kondisi masih berlaku.
+ *
+ * Contoh: `dikunci_sampai` (sampai kapan akun terkunci).
+ *
+ * PENTING: kolom batas harus bertipe timestamp, BUKAN `date`. `date` hanya
+ * menyimpan presisi hari sehingga "kunci 15 menit" akan terpotong menjadi
+ * "sampai hari ini" — penguncian akun menjadi tidak berguna.
+ */
+export const batasWaktu = (nama: string) => timestamp(nama, { withTimezone: true });
+
 /** Versi baris untuk optimistic locking (mencegah tulis saling menimpa). */
 export const versiBaris = () => timestamp('versi_baris', { withTimezone: true }).notNull().default(sql`now()`);
 

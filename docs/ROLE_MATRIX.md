@@ -306,3 +306,42 @@ Ini satu-satunya peran yang memegang seluruh izin.
 5. Setiap kali Anda menambah aturan "X tidak boleh Y", tulis juga invariant/trigger-nya di
    `packages/db/src/sql/invariants.ts` bila bisa ditegakkan database — matriks di dokumen
    ini adalah dokumentasi, bukan penjaga.
+
+---
+
+## 6. Membuktikan Matriks Ini Berlaku
+
+Matriks di atas adalah **dokumentasi**. Yang menegakkannya adalah
+`role_permissions` di database. Keduanya harus selalu sama, dan itu diuji.
+
+### Uji batas izin end-to-end
+
+```bash
+pnpm akun-uji                                    # buat 1 akun uji per peran
+pnpm --filter @osda/tools e2e-izin               # 61 pemeriksaan
+```
+
+Yang diperiksa skrip `tools/scripts/e2e-izin.mjs`:
+
+1. Setiap peran bisa login dan menerima peran yang benar.
+2. **Izin dari database cocok persis dengan `MATRICS_PERAN`** — tanpa izin
+   kurang maupun tambahan. Inilah yang menangkap seed atau migrasi
+   `role_permissions` yang tidak sinkron dengan kontrak.
+3. Tidak ada izin yang tidak dikenal sistem.
+4. Izin yang dimiliki benar-benar lolos ke endpoint.
+5. Izin yang tidak dimiliki benar-benar ditolak (401/403).
+6. Cakupan `OWN` benar-benar membatasi data.
+7. `SUPER_ADMIN` tetap punya akses penuh (kontrol).
+
+Setiap akun uji memakai awalan surel `uji+` agar mudah dikenali. Hapus sebelum
+produksi:
+
+```sql
+delete from members where nomor like 'UJI-%';
+delete from users  where email like 'uji+%';
+```
+
+> Endpoint yang diuji harus benar-benar ada. Awalnya skrip menguji
+> `/finance/summary` dan `/settings` dengan `PATCH` — keduanya tidak ada, dan
+> ujinya "lulus" karena yang terjadi adalah `404`, bukan penolakan izin.
+> Gunakan `GET /api/docs-json` untuk memverifikasi daftar endpoint.

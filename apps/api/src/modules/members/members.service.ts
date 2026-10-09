@@ -28,10 +28,19 @@ import {
   type StatusAnggota,
 } from '@osda/contracts';
 
-import { galatDuplikat, galatTidakDitemukan, galatValidasi } from '../../common/galat.js';
+import {
+  galatCakupanDitolak,
+  galatDuplikat,
+  galatTidakDitemukan,
+  galatValidasi,
+} from '../../common/galat.js';
 import { offsetDari } from '../../common/utilitas/paginasi.js';
 import { pastikanOrganisasiAktif } from '../../common/utilitas/konteks.js';
 import { nomorAnggota } from '../../common/utilitas/kode.js';
+import {
+  bolehLihatAnggota,
+  syaratCakupanAnggota,
+} from '../../common/utilitas/cakupan.js';
 import type { PermintaanBerkonteks, PenggunaPermintaan } from '../../common/tipe.js';
 import { LayananDatabase } from '../../database/database.service.js';
 import type { PayloadArsipkanAnggota } from './dto/members.dto.js';
@@ -92,6 +101,17 @@ export class MembersService {
     if (filter.divisionId) syarat.push(eq(members.divisionId, filter.divisionId));
     if (filter.periodId) syarat.push(eq(members.periodId, filter.periodId));
 
+    // Cakupan. Peran dengan cakupan OWN (mis. MEMBER) hanya boleh melihat
+    // dirinya sendiri — tanpa ini, `member.read` membuka nomor telepon dan
+    // surel seluruh organisasi (spesifikasi §09).
+    const divisiPengguna = await this.divisiPengguna(db, pengguna);
+    const batas = syaratCakupanAnggota(
+      pengguna,
+      { memberId: members.id, userId: members.userId, divisionId: members.divisionId },
+      divisiPengguna,
+    );
+    if (batas) syarat.push(batas as never);
+
     const total = await this.hitungTotal(db, and(...syarat));
     const urutan =
       filter.sortDir === 'asc'
@@ -145,6 +165,18 @@ export class MembersService {
 
     const anggota = baris[0];
     if (!anggota) throw galatTidakDitemukan('Anggota tidak ditemukan.');
+
+    // Cakupan: anggota di luar jangkauan harus ditolak dengan kode
+    // SCOPE_DENIED, bukan 404 — klien perlu tahu datanya ada tapi di luar
+    // cakupan, supaya bisa menampilkan pesan yang tepat.
+    const divisiPengguna = await this.divisiPengguna(db, pengguna);
+    if (!bolehLihatAnggota(pengguna, anggota, divisiPengguna)) {
+      throw galatCakupanDitolak(
+        'Data anggota ini di luar cakupan Anda. Peran dengan cakupan OWN hanya ' +
+          'boleh melihat data dirinya sendiri.',
+      );
+    }
+
     return this.keAnggota(db, anggota);
   }
 
@@ -351,6 +383,26 @@ export class MembersService {
   // ============================================================
   // Helper internal
   // ============================================================
+
+  /**
+   * ID divisi milik pengguna.
+   *
+   * Diperlukan untuk menegakkan cakupan `DIVISION`. Mengembalikan null bila
+   * pengguna belum ditempatkan di divisi mana pun — dalam hal ini dia tidak
+   * boleh melihat anggota divisi lain.
+   */
+  private async divisiPengguna(
+    db: Db,
+    pengguna: PenggunaPermintaan | undefined,
+  ): Promise<string | null> {
+    if (!pengguna?.memberId) return null;
+    const [baris] = await db
+      .select({ divisiId: members.divisionId })
+      .from(members)
+      .where(eq(members.id, pengguna.memberId))
+      .limit(1);
+    return baris?.divisiId ?? null;
+  }
 
   private kolomUrutan(sortBy?: string) {
     switch (sortBy) {

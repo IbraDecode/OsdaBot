@@ -2,13 +2,14 @@
   "name": "@osda/legacy-tools",
   "version": "2.0.0",
   "private": true,
-  "description": "Perkakas migrasi data OSDA BOT v0.4 \u2192 OSDA Platform v2 (dump, mapping, migrasi, rekonsiliasi).",
+  "description": "Perkakas migrasi data OSDA BOT v0.4 → OSDA Platform v2 (dump, mapping, migrasi, rekonsiliasi).",
   "type": "module",
   "scripts": {
     "dump": "node scripts/dump-legacy.mjs",
     "prepare-database": "node scripts/prepare-database.mjs",
     "migrate": "node scripts/migrate-to-v2.mjs",
-    "reconcile": "node scripts/reconcile.mjs"
+    "reconcile": "node scripts/reconcile.mjs",
+    "bersihkan-sandi": "node scripts/bersihkan-sandi-migrasi.mjs"
   },
   "dependencies": {
     "postgres": "^3.4.7",

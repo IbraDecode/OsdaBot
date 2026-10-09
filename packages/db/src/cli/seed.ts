@@ -342,8 +342,40 @@ async function main() {
   // 9. Administrator pertama
   // ---------------------------------------------------------------
   console.log('▸ Menyiapkan administrator pertama…');
-  const email = (process.env.SEED_SUPER_ADMIN_EMAIL ?? 'admin@osis.local').toLowerCase();
-  const sandi = process.env.SEED_SUPER_ADMIN_PASSWORD ?? 'GantiPassword123!';
+  const email = (process.env.SEED_SUPER_ADMIN_EMAIL ?? '').trim().toLowerCase();
+  const sandi = process.env.SEED_SUPER_ADMIN_PASSWORD ?? '';
+
+  // Admin DIBUAT tanpa nilai bawaan.
+  //
+  // Sebelumnya seed memakai kata sandi tetap yang tertulis di repositori.
+  // Siapa pun yang membaca sumber ini bisa masuk sebagai administrator.
+  // Seed sekarang berhenti dulu, supaya tidak pernah ada admin dengan
+  // kata sandi yang sudah diketahui publik.
+  //
+  // Untuk pengembangan lokal, isi sendiri di `.env`:
+  //   SEED_SUPER_ADMIN_EMAIL=...
+  //   SEED_SUPER_ADMIN_PASSWORD=...
+  if (!email || !sandi) {
+    console.error('');
+    console.error('  Seed berhenti: kredensial administrator belum diisi.');
+    console.error('');
+    console.error('  Isi di .env lalu jalankan ulang:');
+    console.error('    SEED_SUPER_ADMIN_EMAIL=admin@contoh.local');
+    console.error('    SEED_SUPER_ADMIN_PASSWORD=<kata sandi kuat Anda sendiri>');
+    console.error('');
+    console.error('  Menolak memakai nilai bawaan: kata sandi administrator yang');
+    console.error('  tertulis di repositori berarti siapa pun bisa masuk sebagai admin.');
+    console.error('');
+    process.exit(1);
+  }
+  if (sandi.length < 12) {
+    console.error('');
+    console.error(`  Seed berhenti: kata sandi administrator hanya ${sandi.length} karakter.`);
+    console.error('  Minimal 12 karakter.');
+    console.error('');
+    process.exit(1);
+  }
+
   const [admin] = (await db.select().from(users).where(sql`email = ${email}`).limit(1)) ?? [];
 
   if (!admin) {
@@ -373,7 +405,9 @@ async function main() {
   console.log(`  Divisi      : ${nDivisi.length}`);
   console.log(`  Akun kas    : ${nAkun.length}`);
   console.log(`  Admin email : ${email}`);
-  console.log(`  Admin sandi : ${sandi}`);
+  // Kata sandi sengaja TIDAK dicetak. Seed biasanya berjalan di CI atau
+  // pm2, yang stdout-nya masuk ke log — log itu sering dibaca lebih banyak
+  // orang daripada yang perlu tahu kata sandi admin.
   console.log('\n  ⚠️  Ganti kata sandi administrator setelah login pertama.');
   console.log('  Jalankan: pnpm --filter @osda/api start');
   process.exit(0);

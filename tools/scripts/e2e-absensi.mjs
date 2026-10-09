@@ -22,17 +22,26 @@ import { resolve } from 'node:path';
 const AKAR = resolve(import.meta.dirname, '../..');
 const API = process.env.API_URL ?? 'http://localhost:4000';
 
-/** Baca kredensial administrator dari .env. */
+/**
+ * Baca kredensial administrator dari `.env`.
+ *
+ * TIDAK ada nilai bawaan. Uji yang diam-diam memakai kata sandi bawaan
+ * berbahaya: ia lulus di mesin yang sudah punya `.env` terisi, lalu
+ * gagal secara membingungkan di mesin lain — atau, lebih buruk, dianggap
+ * lulus padahal tidak pernah menguji apa pun.
+ */
 function kredensial() {
-  try {
-    const isi = readFileSync(resolve(AKAR, '.env'), 'utf8');
-    return {
-      email: isi.match(/^SEED_SUPER_ADMIN_EMAIL=(.+)$/m)?.[1].trim() ?? 'admin@osis.local',
-      sandi: isi.match(/^SEED_SUPER_ADMIN_PASSWORD=(.+)$/m)?.[1].trim() ?? 'GantiPassword123!',
-    };
-  } catch {
-    return { email: 'admin@osis.local', sandi: 'GantiPassword123!' };
+  const isi = readFileSync(resolve(AKAR, '.env'), 'utf8');
+  const email = isi.match(/^SEED_SUPER_ADMIN_EMAIL=(.+)$/m)?.[1].trim();
+  const sandi = isi.match(/^SEED_SUPER_ADMIN_PASSWORD=(.+)$/m)?.[1].trim();
+  if (!email || !sandi) {
+    console.error(
+      '\n.env tidak memuat SEED_SUPER_ADMIN_EMAIL dan SEED_SUPER_ADMIN_PASSWORD.\n' +
+        'Isi keduanya lalu jalankan ulang.',
+    );
+    process.exit(1);
   }
+  return { email, sandi };
 }
 
 let lolos = 0;

@@ -46,6 +46,28 @@ export function galatIzinDitolak(pesan = 'Anda tidak memiliki izin untuk tindaka
   return new GalatApi('PERMISSION_DENIED', pesan);
 }
 
+/**
+ * Akun terkunci sementara karena terlalu banyak percobaan masuk gagal.
+ *
+ * Status 429 dipakai agar klien tahu ini kondisi sementara yang akan berubah
+ * sendiri, bukan penolakan permanen.
+ */
+export function galatAkunTerkunci(pesan: string, detail?: unknown): GalatApi {
+  return new GalatApi('ACCOUNT_LOCKED', pesan, detail);
+}
+
+/**
+ * Data ada, tetapi di luar cakupan pengguna.
+ *
+ * Dipakai terpisah dari `PERMISSION_DENIED` karena maknanya berbeda:
+ * `PERMISSION_DENIED` berarti "kamu tidak boleh jenis tindakan ini",
+ * sedangkan `SCOPE_DENIED` berarti "kamu boleh, tapi hanya terhadap datamu
+ * sendiri". Klien bisa menampilkan pesan yang tepat untuk keduanya.
+ */
+export function galatCakupanDitolak(pesan: string, detail?: unknown): GalatApi {
+  return new GalatApi('SCOPE_DENIED', pesan, detail);
+}
+
 /** Data tidak ditemukan. */
 export function galatTidakDitemukan(pesan = 'Data tidak ditemukan.'): GalatApi {
   return new GalatApi('NOT_FOUND', pesan);

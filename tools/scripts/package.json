@@ -2,10 +2,19 @@
   "name": "@osda/tools",
   "version": "2.0.0",
   "private": true,
-  "description": "Perkakas pendukung repositori OSDA (pemeriksaan dokumentasi,.randgate,校验).",
+  "description": "Perkakas pendukung repositori OSDA (pemeriksaan dokumentasi, aturan arsitektur, uji end-to-end, akun uji per peran).",
   "type": "module",
   "scripts": {
     "check-docs": "node check-docs.mjs",
-    "check-randgate": "node check-arquitektur.mjs"
+    "check-arquitektur": "node check-arquitektur.mjs",
+    "akun-uji": "node buat-akun-uji.mjs",
+    "e2e-izin": "node e2e-izin.mjs",
+    "akun-daftar": "node kelola-akun.mjs daftar",
+    "akun-buka-kunci": "node kelola-akun.mjs buka-kunci",
+    "akun-sandi": "node kelola-akun.mjs sandi"
+  },
+  "dependencies": {
+    "postgres": "^3.4.7",
+    "argon2": "^0.44.0"
   }
 }

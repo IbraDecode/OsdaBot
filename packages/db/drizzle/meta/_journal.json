@@ -22,6 +22,13 @@
       "when": 1791521550469,
       "tag": "0002_fix-rapat-slot",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791524715700,
+      "tag": "0003_fix-kunci-akun",
+      "breakpoints": true
     }
   ]
 }

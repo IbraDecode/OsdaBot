@@ -63,6 +63,9 @@ const PESAN_PENGGUNA: Readonly<Record<KodeError, string>> = {
   LEDGER_IMMUTABLE: 'Catatan buku besar sudah final dan tidak dapat diubah.',
   PAYMENT_REQUIRED: 'Pembayaran diperlukan sebelum melanjutkan.',
   RATE_LIMITED: 'Terlalu banyak permintaan. Tunggu sebentar lalu coba lagi.',
+  ACCOUNT_LOCKED:
+    'Akun Anda terkunci sementara karena terlalu banyak percobaan masuk gagal. ' +
+    'Tunggu beberapa menit lalu coba lagi, atau hubungi pengurus untuk membuka kuncinya.',
   INTERNAL_ERROR: 'Server OSDA mengalami gangguan. Coba lagi beberapa saat lagi.',
   INTEGRATION_UNAVAILABLE: 'Layanan pendukung sedang tidak tersedia.',
   STORAGE_UNAVAILABLE: 'Penyimpanan berkas sedang tidak tersedia.',

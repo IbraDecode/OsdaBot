@@ -2,7 +2,7 @@
   "name": "osda",
   "version": "2.0.0",
   "private": true,
-  "description": "OSDA Platform \u2014 OSIS Digital Administration & Operations Platform. Satu sistem untuk mengelola organisasi, satu sumber data untuk semua.",
+  "description": "OSDA Platform — OSIS Digital Administration & Operations Platform. Satu sistem untuk mengelola organisasi, satu sumber data untuk semua.",
   "license": "MIT",
   "packageManager": "pnpm@11.17.0",
   "engines": {
@@ -28,7 +28,10 @@
     "legacy:migrate": "node tools/legacy/scripts/migrate-to-v2.mjs",
     "legacy:reconcile": "node tools/legacy/scripts/reconcile.mjs",
     "docs:check": "node tools/scripts/check-docs.mjs",
-    "check:architecture": "node tools/scripts/check-arquitektur.mjs"
+    "check:architecture": "node tools/scripts/check-arquitektur.mjs",
+    "legacy:bersihkan-sandi": "node tools/legacy/scripts/bersihkan-sandi-migrasi.mjs",
+    "akun-uji": "node tools/scripts/buat-akun-uji.mjs",
+    "akun-daftar": "node tools/scripts/kelola-akun.mjs daftar"
   },
   "devDependencies": {
     "turbo": "^2.11.7",

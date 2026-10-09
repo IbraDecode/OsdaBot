@@ -69,6 +69,24 @@ jobs:
         # atau kredensial yang bocor ke dalam kode.
         run: pnpm check:architecture
 
+      - name: Pastikan tidak ada kata sandi yang tertanam di sumber
+        # Skrip migrasi lama memberikan satu kata sandi placeholder yang sama
+        # untuk semua anggota, dan kata sandi itu tertulis di repositori.
+        # Kalau pola seperti itu muncul lagi, build ini harus gagal.
+        run: |
+          ditemukan="$(
+            grep -rInE "(password|passwd|sandi)[A-Za-z_]*[[:space:]]*[:=][[:space:]]*['\"][^'\"]{8,}['\"]" \
+              --include='*.ts' --include='*.mjs' --include='*.tsx' \
+              apps packages tools 2>/dev/null \
+            | grep -viE "/tests?/|__tests__|\\.test\\.|UjiPeran#|uji-password"
+          )"
+          if [ -n "$ditemukan" ]; then
+            echo "Ditemukan kata sandi yang tertulis di dalam sumber:"
+            echo "$ditemukan"
+            exit 1
+          fi
+          echo "Tidak ada kata sandi yang tertanam di dalam sumber."
+
   build:
     name: Build produksi
     runs-on: ubuntu-latest

@@ -45,7 +45,15 @@ node tools/legacy/scripts/migrate-to-v2.mjs  # migrasi
 node tools/legacy/scripts/reconcile.mjs      # verifikasi (harus 0 selisih)
 
 # Uji end-to-end (butuh API hidup di port 4000)
-pnpm e2e
+pnpm e2e                        # 28 pemeriksaan alur absensi
+pnpm akun-uji                   # buat 1 akun uji per peran
+pnpm --filter @osda/tools e2e-izin   # 61 pemeriksaan batas izin
+
+# Operasional akun
+pnpm akun-daftar                              # akun yang sedang terkunci
+pnpm --filter @osda/tools akun-buka-kunci <email>
+pnpm --filter @osda/tools akun-sandi <email> [sandi-baru]
+pnpm legacy:bersihkan-sandi                   # hapus kata sandi placeholder
 
 # Pemeriksaan aturan
 pnpm docs:check                # 21 dokumen wajib tersedia
@@ -141,6 +149,8 @@ kebenaran akhir ada di tabel `member_roles` → `roles` → `role_permissions`.
 | Member tidak dihapus | Soft delete (`diarsipkan_pada`) |
 | Periode lama tidak hilang | Periode lama jadi `ARCHIVED` |
 | Sumber absensi bukan dari klien | `tentukanSumber()` dari header/UA |
+| **Cakupan (scope) ditegakkan** | `syaratCakupanAnggota()` di service |
+| Akun terkunci setelah 5 gagal | `kebijakan-kunci.ts` |
 
 ---
 
@@ -217,6 +227,26 @@ API, baru pakai di client. Jangan sebaliknya.
    sama (mis. paralel antar divisi). Tabrakan jadwal adalah peringatan, bukan error.
 7. **Sumber absensi diambil dari badan permintaan.** Klien boleh memalsukan
    nilainya. Pakai `tentukanSumber()`.
+8. **Cakupan hanya ada di token, tanpa penegakannya di service.** Izin
+   `member.read` pada peran berkakupan `OWN` akan membuka daftar anggota
+   beserta nomor teleponnya. Pakai `syaratCakupanAnggota()` /
+   `bolehLihatAnggota()`.
+9. **Kolom batas waktu (`dikunci_sampai`) bertipe `date`.** Presisi hari
+   membuat "kunci 15 menit" terpotong jadi "sampai hari ini". Pakai
+   `batasWaktu()` dari `_base.ts` (timestamp with timezone).
+10. **Kolom yang ditulis tapi tidak pernah dibaca.** `gagal_login_berturut` dan
+    `dikunci_sampai` dulu hanya diisi tanpa dibaca — hasilnya tidak ada
+    penguncian akun sama sekali. Bila menambah kolom penghitung, langsung
+    tulis test-nya.
+11. **Menguji endpoint yang tidak ada.** Uji RBAC yang mengharapkan 404 dianggap
+    "lolos" karena 404 bukan 403 — padahal tidak ada yang dibuktikan. Cek
+    `GET /api/docs-json` dulu.
+12. **Kata sandi placeholder di repo.** Satu sandi yang sama untuk banyak akun
+    dan tertulis di sumber = semua akun bisa dibuka siapa saja. Akun migrasi
+    dibuat tanpa sandi; masuk lewat identitas WhatsApp.
+13. **`rootDir` di konfigurasi TypeScript bersama.** Path bersifat relatif
+    terhadap berkas konfigurasi itu, bukan proyek yang memakainya. Taruh
+    `rootDir`/`outDir` hanya di `tsconfig.build.json` tiap paket.
 
 ---
 
@@ -228,9 +258,11 @@ API, baru pakai di client. Jangan sebaliknya.
 4. Jalankan `pnpm typecheck` lagi.
 5. Jalankan `pnpm test` bila menyentuh domain, kontrak, atau token.
 6. Jalankan `pnpm check:architecture` bila menyentuh akses data.
-7. Jalankan `pnpm e2e` bila menyentuh absensi, rapat, atau otorisasi.
-8. Perbarui dokumen modul bila perilaku berubah.
-9. **Jangan commit kecuali diminta.**
+7. Jalankan `pnpm e2e` bila menyentuh absensi atau rapat.
+8. Jalankan `pnpm --filter @osda/tools e2e-izin` bila menyentuh izin, peran,
+   atau cakupan.
+9. Perbarui dokumen modul bila perilaku berubah.
+10. **Jangan commit kecuali diminta.**
 
 ---
 
@@ -256,8 +288,12 @@ Bila menggunakan beberapa agent sekaligus:
 | Validasi masukan | `@osda/contracts` (Zod) + `common/pipes/validation.pipe.ts` |
 | Penjaga otorisasi | `apps/api/src/auth/guards/` |
 | Deteksi kanal | `apps/api/src/common/utilitas/sumber-kanal.ts` |
+| Penegakan cakupan | `apps/api/src/common/utilitas/cakupan.ts` |
+| Kebijakan kunci akun | `apps/api/src/modules/auth/kebijakan-kunci.ts` |
 | Format galat | `apps/api/src/common/galat.ts` |
-| Uji E2E | `tools/scripts/e2e-absensi.mjs` |
+| Uji E2E absensi | `tools/scripts/e2e-absensi.mjs` |
+| Uji E2E batas izin | `tools/scripts/e2e-izin.mjs` |
+| Perkakas akun uji | `tools/scripts/buat-akun-uji.mjs`, `kelola-akun.mjs` |
 | Konfigurasi agent | `opencode.json` |
 
 ---
@@ -268,3 +304,14 @@ Bila menggunakan beberapa agent sekaligus:
   Jalankan sendiri dari foldernya.
 - `docs/atom-index.md` adalah indeks seluruh dokumen.
 - Git repository: `https://github.com/IbraDecode/OsdaBot.git`
+
+<!-- BEGIN:turborepo-agent-rules -->
+
+# This is NOT the Turborepo you know
+
+Turborepo configuration, task behavior, and CLI commands can vary between installed versions and may differ from your training data. Resolve the `turbo` package from this file's directory or relevant workspace; in monorepos, it may not be visible from the repository root. For example, run `node -p "require.resolve('turbo/package.json')"` from a workspace that depends on `turbo`.
+
+Read `docs/README.md` inside that installed package first, then read the relevant pages from its `docs/` directory before changing Turborepo configuration or commands. Heed deprecation notices. These bundled docs match the installed package version and are available without network access.
+
+This block is written and re-added by `turbo` before repository-scoped commands when an AI agent is detected. In the Turborepo source repository, its template is defined in `crates/turborepo-cli/src/cli/agent_guidance.rs`. Removing the managed block while updates are enabled means a later qualifying invocation will add it again. Set `"agentGuidance": false` in the root `turbo.json` or `turbo.jsonc` to opt out; this does not remove an existing block. Keep the block committed with your work to avoid an uncommitted change on the next agent invocation.
+<!-- END:turborepo-agent-rules -->

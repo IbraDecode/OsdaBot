@@ -16,11 +16,17 @@ import { uuidAcak } from '@osda/auth';
 import { accountLinkRequests, sessions, users, type Db, type PenggunaBaris } from '@osda/db';
 import type { HasilMasuk, HasilTukarIdentitas, ProfilPengguna } from '@osda/contracts';
 
-import { galatBelumMasuk, galatIzinDitolak, galatTidakDitemukan } from '../../common/galat.js';
+import {
+  galatAkunTerkunci,
+  galatBelumMasuk,
+  galatIzinDitolak,
+  galatTidakDitemukan,
+} from '../../common/galat.js';
 import { KONFIGURASI, type Konfigurasi } from '../../config/konfigurasi.js';
 import { LayananDatabase } from '../../database/database.service.js';
 import { LayananIzin, type IzinEfektif } from '../../auth/izin.service.js';
 import { LayananToken, type MuatanToken } from '../../auth/token.service.js';
+import { detikTersisa, menitKunci, sedangDikunci } from './kebijakan-kunci.js';
 
 /** Konteks teknis permintaan (untuk tabel `sessions`). */
 export interface KonteksSesi {
@@ -55,8 +61,18 @@ export class AuthService {
       .where(sql`lower(${users.email}) = ${surel}`)
       .limit(1);
 
+    // Pesan yang sama untuk "email tidak ada" dan "sandi salah" supaya Login
+    // tidak bisa dipakai menebak alamat surel mana yang terdaftar.
+    const sandiSalah = () => galatBelumMasuk('Email atau kata sandi salah.');
+
     if (!pengguna || !pengguna.passwordHash) {
-      throw galatBelumMasuk('Email atau kata sandi salah.');
+      // Tetap lakukan verifikasi agar waktu respons tidak membocorkan apakah
+      // surel terdaftar: hash argon2 sekali, lalu buang hasilnya.
+      await argon2.verify(
+        '$argon2id$v=19$m=65536,t=3,p=4$c2FsYW5nYXNhbmdhbA$3gJ8kQ0ZKq1lJ0Hq4D8xJmY8k7Wgq0eZ2V6v0m9oQ',
+        password,
+      ).catch(() => false);
+      throw sandiSalah();
     }
     if (pengguna.status !== 'ACTIVE') {
       throw galatIzinDitolak(
@@ -64,13 +80,40 @@ export class AuthService {
       );
     }
 
+    // Penguncian akun. Tanpa ini `gagal_login_berurut` hanya dicatat dan
+    // tidak pernah lagi dibaca — sehingga tebakan kata sandi tidak terbatas.
+    if (sedangDikunci(pengguna.dikunciSampai)) {
+      const sisa = detikTersisa(pengguna.dikunciSampai);
+      throw galatAkunTerkunci(
+        `Akun terkunci sementara karena terlalu banyak percobaan masuk gagal. ` +
+          `Coba lagi dalam ${Math.ceil(sisa / 60)} menit.`,
+        { cobaLagiDalamDetik: sisa },
+      );
+    }
+
     const cocok = await this.periksaSandi(pengguna.passwordHash, password);
     if (!cocok) {
+      const gagal = pengguna.gagalLoginBerturut + 1;
+      const menit = menitKunci(gagal);
       await db
         .update(users)
-        .set({ gagalLoginBerturut: pengguna.gagalLoginBerturut + 1 })
+        .set({
+          gagalLoginBerturut: gagal,
+          // Kunci hanya bila ambang terlampaui; sebelum itu cukup dicatat.
+          dikunciSampai:
+            menit > 0
+              ? new Date(Date.now() + menit * 60_000)
+              : pengguna.dikunciSampai,
+        })
         .where(eq(users.id, pengguna.id));
-      throw galatBelumMasuk('Email atau kata sandi salah.');
+
+      if (menit > 0) {
+        throw galatAkunTerkunci(
+          `Terlalu banyak percobaan gagal. Akun dikunci ${menit} menit.`,
+          { cobaLagiDalamDetik: menit * 60 },
+        );
+      }
+      throw sandiSalah();
     }
 
     await db

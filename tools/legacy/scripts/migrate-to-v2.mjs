@@ -220,14 +220,25 @@ async function main() {
     const kelas = pecahKelas(a.class);
     const nomorWa = nomorDariJid(a.account_id);
 
-    // Akun agar anggota bisa masuk Web/Mobile. Kata sandi sementara se-level
-    // hanyalah placeholder; administrator WAJIB reset setelah cutover.
+    // Akun dibuat TANPA kata sandi.
+    //
+    // Sebelumnya SEMUA anggota mendapat kata sandi placeholder yang sama. Tiga
+    // masalah dengan cara itu:
+    //   1. Kata sandinya tertulis di repositori publik — siapa pun bisa masuk
+    //      ke akun anggota lain hanya dengan membacanya.
+    //   2. Satu kata sandi untuk 49 orang berarti satu kebocoran membuka
+    //      semuanya.
+    //   3. Akun-akun ini tidak punya surel, jadi tidak bisa masuk lewat surel
+    //      pada dasarnya.
+    //
+    // Hebatnya: anggota sudah punya identitas WhatsApp. Mereka masuk lewat
+    // tautan dalam atau kode yang dikirim ke WhatsApp, lalu menetapkan kata
+    // sandi sendiri. `password_hash` NULL adalah state yang sah — lihat
+    // kolom `users.password_hash` di skema.
     let userId = null;
     const [u] = await db`
       insert into users (nama, telepon, password_hash, status, telepon_diverifikasi_pada)
-      values (${a.name}, ${nomorWa},
-              ${await argon2.hash('OsdaMigrasi#2026', { type: argon2.argon2id })},
-              'ACTIVE', now())
+      values (${a.name}, ${nomorWa}, null, 'ACTIVE', now())
       on conflict (telepon) do update set nama = excluded.nama
       returning id`;
     userId = u?.id ?? null;

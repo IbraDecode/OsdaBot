@@ -1,0 +1,1 @@
+ALTER TABLE "users" ALTER COLUMN "dikunci_sampai" SET DATA TYPE timestamp with time zone;

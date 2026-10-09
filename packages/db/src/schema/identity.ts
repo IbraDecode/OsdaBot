@@ -12,8 +12,9 @@
 import { date, index, integer, jsonb, pgTable, text, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
 import {
-  diubahPada,
+  batasWaktu,
   dibuatPada,
+  diubahPada,
   dibuatOleh,
   enumProviderIdentitas,
   enumStatusAnggota,
@@ -45,7 +46,7 @@ export const users = pgTable(
     loginTerakhirPada: date('login_terakhir_pada'),
     /** Hitung login gagal untuk mendeteksi percobaan menebak. */
     gagalLoginBerturut: integer('gagal_login_berturut').notNull().default(0),
-    dikunciSampai: date('dikunci_sampai'),
+    dikunciSampai: batasWaktu('dikunci_sampai'),
     dibuatPada: dibuatPada(),
     diubahPada: diubahPada(),
     dihapusPada: date('dihapus_pada'),

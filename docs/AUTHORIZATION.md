@@ -151,12 +151,43 @@ izin lainnya              → memakai cakupan milik peran tersebut
 - **Cakupan** ditegakkan di lapisan service:
   - `apps/api/src/common/utilitas/konteks.ts` → `pastikanOrganisasiAktif()` menolak
     bila organisasi tujuan bukan milik pengguna.
-  - Service memfilter berdasarkan `divisionId`/`memberId` milik pengguna.
-  - Gagal kueri cakupan memakai `galatIzinDitolak(...)` yang berarti
-    `SCOPE_DENIED`/`OBJECT_ACCESS_DENIED`.
+  - `apps/api/src/common/utilitas/cakupan.ts` → `syaratCakupanAnggota()` menyaring
+    kueri daftar, `bolehLihatAnggota()` memeriksa satu baris.
+  - Gagal cakupan memakai `galatCakupanDitolak(...)` → `403 SCOPE_DENIED`.
 - `LayananIzin` mengembalikan `scopes` (gabungan cakupan dari seluruh peran pengguna)
   dan dimasukkan ke dalam token sehingga klien bisa menyembunyikan menu, tetapi
   **keputusan akhir tetap di server**.
+
+### Mengapa `SCOPE_DENIED` berbeda dari `PERMISSION_DENIED`
+
+Keduanya berstatus 403, tapi maknanya berbeda dan klien boleh menampilkan pesan
+yang berbeda:
+
+| Kode | Makna | Contoh |
+|---|---|---|
+| `PERMISSION_DENIED` | Kamu tidak boleh melakukan jenis tindakan ini | Bendahara mencoba mencatat kehadiran |
+| `SCOPE_DENIED` | Kamu boleh, tapi hanya terhadap datamu sendiri | Anggota membuka profil anggota lain |
+
+`403 SCOPE_DENIED` lebih jujur daripada `404`, karena klien bisa membedakan
+"datanya tidak ada" dari "datanya ada tapi di luar jangkauan kamu".
+
+### Cakupan pada daftar anggota
+
+Tanpa penyaringan cakupan, izin `member.read` pada peran berkakupan `OWN`
+(seperti `MEMBER`) membuka **seluruh** daftar anggota beserta `userId`, nomor
+anggota, surel, dan nomor telepon. Ini yang ditegakkan
+`syaratCakupanAnggota()`:
+
+| Cakupan | Yang terlihat |
+|---|---|
+| `ORGANIZATION` / `SYSTEM` | Seluruh anggota organisasi |
+| `DIVISION` | Anggota se-divisi + anggota yang belum punya divisi |
+| `OWN` (bawaan) | Hanya baris miliknya sendiri |
+| Tanpa identitas (`memberId` & `sub` kosong) | Tidak ada — syarat mustahil, bukan tanpa penyaringan |
+
+Anggota yang memiliki `DIVISION` tetapi belum ditempatkan di divisi mana pun
+melihat **tidak ada siapa pun** di luar dirinya: tanpa mengetahui divisi
+sendiri, penyaringan berdasarkan divisi tidak bisa dilakukan dengan aman.
 
 ---
 

@@ -135,6 +135,9 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 5.9.2
+      vitest:
+        specifier: 'catalog:'
+        version: 3.2.7(@types/node@22.20.5)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)
 
   apps/bot:
     dependencies:
@@ -355,7 +358,14 @@ importers:
         specifier: ^3.4.7
         version: 3.4.9
 
-  tools/scripts: {}
+  tools/scripts:
+    dependencies:
+      argon2:
+        specifier: ^0.44.0
+        version: 0.44.0
+      postgres:
+        specifier: ^3.4.7
+        version: 3.4.9
 
 packages:
 
