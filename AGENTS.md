@@ -46,6 +46,7 @@ node tools/legacy/scripts/reconcile.mjs      # verifikasi (harus 0 selisih)
 
 # Uji end-to-end (butuh API hidup di port 4000)
 pnpm e2e                        # 28 pemeriksaan alur absensi
+pnpm e2e:invariant              # 30 pemeriksaan invariant database (butuh DB)
 pnpm akun-uji                   # buat 1 akun uji per peran
 pnpm --filter @osda/tools e2e-izin   # 61 pemeriksaan batas izin
 
@@ -247,6 +248,16 @@ API, baru pakai di client. Jangan sebaliknya.
 13. **`rootDir` di konfigurasi TypeScript bersama.** Path bersifat relatif
     terhadap berkas konfigurasi itu, bukan proyek yang memakainya. Taruh
     `rootDir`/`outDir` hanya di `tsconfig.build.json` tiap paket.
+14. **Identifier PL/pgSQL tidak dikutip dilipat ke huruf kecil.**
+    `NEW.disetujuiOleh` jadi `new.disetujuioleh`, sedangkan kolomnya
+    `disetujui_oleh`. Trigger gagal untuk SETIAP baris — bukan hanya saat
+    aturan dilanggar. Semua rujukan kolom di `invariants.ts` snake_case.
+15. **Backtick di komentar SQL pada berkas `.ts`.** Berkasnya template
+    literal; backtick memutus string dan membuat build gagal.
+16. **Uji yang "lolos" karena alasan salah.** Pemeriksaan `harusDitolak`
+    pun bisa lulus karena galat lain (mis. parameter tidak ter-substitusi).
+    Karena itu setiap aturan selalu diuji dua sisi: pelanggaran harus
+    DITOLAK, dan casesah harus BERHASIL.
 
 ---
 
@@ -261,8 +272,10 @@ API, baru pakai di client. Jangan sebaliknya.
 7. Jalankan `pnpm e2e` bila menyentuh absensi atau rapat.
 8. Jalankan `pnpm --filter @osda/tools e2e-izin` bila menyentuh izin, peran,
    atau cakupan.
-9. Perbarui dokumen modul bila perilaku berubah.
-10. **Jangan commit kecuali diminta.**
+9. Jalankan `pnpm e2e:invariant` bila menyentuh `invariants.ts`, skema, atau
+   alur keuangan.
+10. Perbarui dokumen modul bila perilaku berubah.
+11. **Jangan commit kecuali diminta.**
 
 ---
 

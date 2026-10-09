@@ -238,6 +238,7 @@ pnpm test                   # 160 tes unit
 pnpm build                  # build produksi (paket bersama → API → Bot)
 pnpm start                  # jalankan API dari dist/
 pnpm e2e                    # uji alur absensi end-to-end (API harus hidup)
+pnpm e2e:invariant          # uji invariant database (30 pemeriksaan)
 pnpm akun-uji               # buat satu akun uji per peran
 pnpm --filter @osda/tools e2e-izin    # uji batas izin (61 pemeriksaan)
 pnpm db:migrate             # terapkan migrasi + invariant
@@ -255,6 +256,7 @@ pnpm legacy:reconcile       # data lama utuh?
 | Tes unit | 196 lulus (contracts 26 · auth 23 · domain 24 · notifications 28 · db 27 · api 36 · bot 32) |
 | Uji E2E absensi | 28/28 lulus |
 | Uji E2E batas izin | 61/61 lulus |
+| Uji invariant database | 30/30 lulus |
 | Rekonsiliasi data lama | selisih 0 |
 | Dokumen wajib | 21/21 |
 | Aturan arsitektur | terpenuhi |

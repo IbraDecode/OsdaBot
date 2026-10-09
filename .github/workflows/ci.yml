@@ -164,3 +164,32 @@ jobs:
           n=$(ls packages/db/drizzle/*.sql | wc -l)
           echo "Jumlah berkas migrasi: $n"
           test "$n" -ge 1 || { echo 'Belum ada migrasi'; exit 1; }
+
+      - name: Rujukan kolom di fungsi PL/pgSQL harus snake_case
+        # Identifier yang tidak dikutip di dalam PL/pgSQL dilipat ke huruf
+        # kecil. Menulis NEW.disetujuiOleh membuat trigger gagal untuk SETIAP
+        # baris — bukan hanya saat aturan dilanggar — sehingga alur persetujuan
+        # keuangan mati tanpa pesan yang berguna.
+        run: |
+         _utils='(NEW|OLD|TG_[A-Z_]+)'
+          # Baris komentar SQL (--) dilewati: referensi di dalam komentar
+          # hanya dokumentasi, bukan kode yang dieksekusi.
+          curam=$(grep -vE '^\s*--' packages/db/src/sql/invariants.ts \
+                  | grep -nE "$_utils\.[a-z]+[A-Z][A-Za-z0-9_]*" || true)
+          if [ -n "$curam" ]; then
+            echo "Ditemukan referensi kolom camelCase di dalam SQL:"
+            echo "$curam"
+            echo "PL/pgSQL melipat identifier ke huruf kecil. Gunakan snake_case."
+            exit 1
+          fi
+          echo "Semua rujukan kolom di invariants.ts memakai snake_case."
+
+      - name: Tidak ada backtick di dalam literal SQL
+        # Berkas .ts berisi SQL dalam template literal; satu backtick di dalam
+        # komentar akan memutus string dan menggagalkan build.
+        run: |
+          if grep -nE '^\s*--.*`' packages/db/src/sql/invariants.ts; then
+            echo "Ditemukan backtick di komentar SQL."
+            exit 1
+          fi
+          echo "Tidak ada backtick di komentar SQL."

@@ -84,13 +84,19 @@ CREATE TRIGGER trg_dokumen_versi_locked
 -- ============================================================
 -- 4. Invariant: pemohon tidak boleh menjadi pemberi persetujuan
 --    (mencegah satu orang mengendalikan seluruh alur uang)
+--
+-- PENTING: di dalam PL/pgSQL, identifier yang tidak dikutip DILIPAT ke
+-- huruf kecil. NEW.disetujuiOleh menjadi new.disetujuioleh, sedangkan
+-- kolomnya disetujui_oleh — trigger gagal untuk setiap baris, bukan hanya
+-- saat self-approve terjadi. Semua rujukan kolom di file ini WAJIB
+-- snake_case.
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION osda_no_self_approval()
 RETURNS TRIGGER AS $$
 BEGIN
-  IF NEW.disetujuiOleh IS NOT NULL AND NEW.pemohonMemberId IS NOT NULL
-     AND NEW.disetujuiOleh = NEW.pemohonMemberId THEN
+  IF NEW.disetujui_oleh IS NOT NULL AND NEW.pemohon_member_id IS NOT NULL
+     AND NEW.disetujui_oleh = NEW.pemohon_member_id THEN
     RAISE EXCEPTION 'Pemohon tidak boleh menyetujui pengajuannya sendiri.'
       USING ERRCODE = 'check_violation';
   END IF;
@@ -106,8 +112,8 @@ CREATE TRIGGER trg_no_self_approval_expense
 CREATE OR REPLACE FUNCTION osda_no_self_approval_reimburse()
 RETURNS TRIGGER AS $$
 BEGIN
-  IF NEW.disetujuiOleh IS NOT NULL AND NEW.memberId IS NOT NULL
-     AND NEW.disetujuiOleh = NEW.memberId THEN
+  IF NEW.disetujui_oleh IS NOT NULL AND NEW.member_id IS NOT NULL
+     AND NEW.disetujui_oleh = NEW.member_id THEN
     RAISE EXCEPTION 'Anggota tidak boleh menyetujui reimbursement-nya sendiri.'
       USING ERRCODE = 'check_violation';
   END IF;
@@ -208,10 +214,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_periode_keuangan_aktif
 CREATE OR REPLACE FUNCTION osda_payment_settle_once()
 RETURNS TRIGGER AS $$
 BEGIN
-  IF OLD.status = 'PAID' AND NEW.status = 'PAID' AND OLD.transaksiId IS NOT NULL
-     AND NEW.transaksiId IS NOT NULL AND OLD.transaksiId <> NEW.transaksiId THEN
+  IF OLD.status = 'PAID' AND NEW.status = 'PAID' AND OLD.transaksi_id IS NOT NULL
+     AND NEW.transaksi_id IS NOT NULL AND OLD.transaksi_id <> NEW.transaksi_id THEN
     RAISE EXCEPTION 'Pembayaran % sudah disettle dengan transaksi %; tidak boleh disettle lagi.',
-      OLD.kode, OLD.transaksiId
+      OLD.kode, OLD.transaksi_id
       USING ERRCODE = 'unique_violation';
   END IF;
   RETURN NEW;

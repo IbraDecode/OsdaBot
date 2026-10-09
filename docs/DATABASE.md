@@ -277,3 +277,48 @@ Aturan `onDelete` yang dipakai konsisten:
    rusak bila seseorang menambah indeks unik biasa di kolom yang sama — periksa sebelum menambah.
 5. `roles.cakupan_default` saat ini masih `NULL` untuk seluruh peran bawaan di basis data. Jangan
    mengandalkan kolom itu untuk otorisasi; cakupan efektif datang dari `role_permissions.cakupan`.
+
+---
+
+## 12. Invariant: SQL PL/pgSQL Harus snake_case
+
+Berkas `packages/db/src/sql/invariants.ts` memasang trigger dan constraint.
+Semua rujukan kolom di dalam fungsi PL/pgSQL **wajib snake_case**:
+
+```sql
+-- SALAH: identifier tanpa kutip DILIPAT ke huruf kecil.
+-- NEW.disetujuiOleh menjadi new.disetujuioleh, kolomnya disetujui_oleh.
+IF NEW.disetujuiOleh IS NOT NULL AND NEW.pemohonMemberId IS NOT NULL ...
+
+-- BENAR
+IF NEW.disetujui_oleh IS NOT NULL AND NEW.pemohon_member_id IS NOT NULL ...
+```
+
+Konsekuensinya kalau salah: trigger melempar galat untuk **setiap** baris,
+bukan hanya saat aturan benar-benar dilanggar. Gejalanya alur yang bergantung
+padanya mati total tanpa pesan yang berguna.
+
+> Kasus nyata: `osda_no_self_approval` dan `osda_no_self_approval_reimburse`
+> memakai `NEW.disetujuiOleh` / `NEW.memberId`. Akibatnya **setiap** `UPDATE`
+> ke `expense_requests` dan `reimbursements` gagal dengan
+> `record "new" has no field "disetujuioleh"` — alur persetujuan keuangan
+> tidak bisa berjalan sama sekali.
+
+> Catatan lain: jangan menulis backtick di dalam komentar SQL pada berkas
+> `.ts` — berkasnya adalah template literal, sehingga backtick memutus string.
+
+### Membuktikan invariant benar-benar ditegakkan
+
+```bash
+pnpm e2e:invariant      # 30 pemeriksaan
+```
+
+Skrip `tools/scripts/e2e-invariant.mjs` mencoba melanggar setiap aturan
+lewat SQL dan memastikan database **menolak**. Pemeriksaan terpenting adalah
+nomor 0: UPDATE no-op pada setiap tabel ber-trigger harus tetap berhasil.
+Tanpa itu, trigger yang salah rujukan kolom lolos dari pemeriksaan karena
+ujian yang salah akan melihat "ditolak" dan menganggapnya benar.
+
+Pemeriksaan ini juga menguji sisi sebaliknya — versi dokumen yang belum
+dikunci harus **boleh** diubah, dan orang yang berbeda dari pemohon **boleh**
+menyetujui. Trigger yang terlalu agresif juga bug.
