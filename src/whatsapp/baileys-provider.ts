@@ -75,6 +75,42 @@ import type {
 const log = logger.child({ module: 'baileys' })
 
 /**
+ * Logger untuk Baileys sendiri.
+ *
+ * WAJIB level 'warn'. Pada level 'info', Baileys mencetak `helloMsg`
+ * (ephemeral key) dan `node` (payload registrasi berisi `devicePairingData`) —
+ * itu materi kriptografis SENSITIF yang tidak boleh masuk log.
+ *
+ * Pakai `logger.child()` dari Pino supaya interface-nya lengkap (`child()`,
+ * `level`) sesuai yang Baileys butuhkan, dengan level dan redaksi tambahan.
+ */
+const baileysLog = logger.child({ module: 'baileys' }, {
+  level: 'warn',
+  redact: {
+    paths: [
+      'node',
+      'node.devicePairingData',
+      'node.noiseKey',
+      'helloMsg',
+      'helloMsg.clientHello',
+      'helloMsg.clientHello.ephemeral',
+      'creds',
+      'keys',
+      'ephemeral',
+      'devicePairingData',
+      'noiseKey',
+      'signedIdentityKey',
+      'signedPreKey',
+      'advSecretKey',
+      'identityKey',
+      'payload',
+    ],
+    censor: '[REDACTED]',
+  },
+})
+
+
+/**
  * Cache msgRetryCounter HARUS hidup di luar socket.
  * Source: Example/example.ts — "keep this out of the socket itself, so as to
  * prevent a message decryption/encryption loop across socket restarts".
@@ -148,8 +184,14 @@ export interface BaileysProviderOptions {
   sessionFolder?: string
   /** Nama yang tampil di WhatsApp → Linked Devices. */
   browserName?: string
-  /** Nomor akun (hanya format digits + country code). */
-  ownerPhone?: string
+  /**
+   * Nomor akun yang akan DITAUTKAN ke Baileys (nomor BOT).
+   *
+   * PENTING: ini BUKAN nomor pemilik/admin. `sock.requestPairingCode(nomor)`
+   * menautkan nomor yang diberikan sebagai perangkat companion — kalau diisi
+   * nomor pemilik, akun pemilik-lah yang jadi bot.
+   */
+  linkPhone?: string
 }
 
 export class BaileysProvider implements WhatsAppProvider {
@@ -176,12 +218,12 @@ export class BaileysProvider implements WhatsAppProvider {
   private shuttingDown = false
   private readonly sessionFolder: string
   private readonly browserName: string
-  private readonly ownerPhone: string | null
+  private readonly linkPhone: string | null
 
   constructor(options: BaileysProviderOptions = {}) {
     this.sessionFolder = options.sessionFolder ?? env.WHATSAPP_SESSION_DIR
     this.browserName = options.browserName ?? 'OSDABOT'
-    this.ownerPhone = options.ownerPhone ?? env.WHATSAPP_OWNER_PHONE ?? null
+    this.linkPhone = options.linkPhone ?? env.WHATSAPP_LINK_PHONE ?? null
   }
 
   // ===========================================================================
@@ -208,7 +250,7 @@ export class BaileysProvider implements WhatsAppProvider {
         creds: state.creds,
         keys: makeCacheableSignalKeyStore(state.keys, log),
       },
-      logger: log,
+      logger: baileysLog,
       browser: Browsers.ubuntu(this.browserName),
       // Bot boleh online 24/7 tanpa membuat HP utama kehilangan notifikasi.
       markOnlineOnConnect: env.WHATSAPP_MARK_ONLINE_ON_CONNECT,
@@ -355,7 +397,12 @@ export class BaileysProvider implements WhatsAppProvider {
     return { ...this.status }
   }
 
-  /** Pairing code — hanya kalau belum pernah terdaftarkan. */
+  /**
+   * Pairing code — hanya kalau BELUM pernah terdaftarkan.
+   *
+   * `phoneNumber` di sini adalah nomor akun yang akan menjadi BOT, bukan
+   * nomor pemilik yang mengendalikan.
+   */
   async requestPairingCode(phoneNumber?: string): Promise<string> {
     const sock = this.sock
     if (!sock) throw new Error('Socket belum terhubung. Jalankan connect() lebih dulu.')
@@ -364,18 +411,31 @@ export class BaileysProvider implements WhatsAppProvider {
       throw new Error('Nomor ini sudah tertaut. Logout dulu kalau ingin menautkan ulang.')
     }
 
-    const number = phoneNumber ?? this.ownerPhone
-    if (!number) throw new Error('Nomor WhatsApp belum diisi (WHATSAPP_OWNER_PHONE).')
+    const number = phoneNumber ?? this.linkPhone
+    if (!number) {
+      throw new Error(
+        'Nomor akun bot belum diisi. Set WHATSAPP_LINK_PHONE ke nomor bot ' +
+          '(digits + kode negara, mis. 6281234567890).',
+      )
+    }
 
     // Hanya digits + country code. '+', '-', '()' dan spasi membuat jidEncode
     // menghasilkan JID tidak valid.
     const clean = number.replace(/[^0-9]/g, '')
     if (clean.length < 8 || clean.length > 15) {
-      throw new Error(`Nomor tidak valid. Gunakan format digits + kode negara, mis. 6281234567890.`)
+      throw new Error('Nomor tidak valid. Gunakan format digits + kode negara, mis. 6281234567890.')
+    }
+
+    if (env.WHATSAPP_ADMIN_PHONE && env.WHATSAPP_ADMIN_PHONE === clean) {
+      throw new Error(
+        'Nomor tersebut sama dengan WHATSAPP_ADMIN_PHONE. Nomor admin tidak boleh ' +
+          'dipakai untuk menautkan bot — bot harus nomor akun terpisah.',
+      )
     }
 
     const code = await sock.requestPairingCode(clean)
     this.emit('pairingCode', code)
+    log.info({ account: maskPhone(clean) }, 'kode pairing dibuat')
     return code
   }
 
@@ -875,4 +935,16 @@ export type { DeliveryStatus }
 /** Helper: apakah JID ini LID (untuk log & keputusan mention). */
 export function isLidJid(jid: string): boolean {
   return isLidUser(jid) === true
+}
+
+/**
+ * Samarkan nomor untuk log.
+ *
+ * Nomor WhatsApp adalah data pribadi. Log adalah tempat yang paling mudah
+ * bocor (dikirim ke aggregator, disimpan lama, dibaca orang lain).
+ */
+export function maskPhone(phone: string): string {
+  const digits = phone.replace(/[^0-9]/g, '')
+  if (digits.length <= 6) return '*'.repeat(digits.length)
+  return `${digits.slice(0, 4)}${'*'.repeat(digits.length - 6)}${digits.slice(-2)}`
 }

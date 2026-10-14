@@ -160,11 +160,14 @@ sungguhan yang terkirim saat test berjalan.
 ## Menjalankan
 
 ```bash
-# Pairing lewat QR — jalankan aplikasi, pindai dari WhatsApp
-pnpm start
+# Pairing lewat pairing code (disarankan di server)
+pnpm osda:pair --code
 
-# Pairing dengan kode (nomor harus milik Anda sendiri / sudah diizinkan)
-WHATSAPP_OWNER_PHONE=6281234567890 pnpm start
+# Pairing lewat QR (pindai dari HP)
+pnpm osda:pair
+
+# Jalankan bot
+pnpm start
 ```
 
 Pemeriksaan:
@@ -173,3 +176,15 @@ Pemeriksaan:
 pnpm osda whatsapp:status
 pnpm osda whatsapp:files     # lihat isi folder session
 ```
+
+Rincian operasional & troubleshooting: [WHATSAPP-OPS.md](./WHATSAPP-OPS.md)
+
+## Dua nomor, dua peran
+
+| Variabel | Isi | Arti |
+|---|---|---|
+| `WHATSAPP_LINK_PHONE` | nomor **BOT** | Akun yang ditautkan ke Baileys |
+| `WHATSAPP_ADMIN_PHONE` | nomor **pemilik** | Pengendali, tidak pernah dikirim ke WhatsApp |
+
+Keduanya wajib berbeda — validasi boot menolak kalau sama. Nomor bot dikirim
+ke `sock.requestPairingCode()`; nomor admin tidak pernah menyentuh WhatsApp.

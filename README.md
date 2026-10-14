@@ -15,7 +15,7 @@ pnpm db:migrate && pnpm db:seed && pnpm dev
 
 | | |
 |---|---|
-| Test | **154 lulus, 0 gagal** |
+| Test | **164 lulus, 0 gagal** |
 | Tool | 15 |
 | Skill | 3 |
 | Permission | 50 |
@@ -61,7 +61,7 @@ src/
 skills/             Kemampuan berbasis Markdown
 docs/               Dokumentasi berbahasa Indonesia
 tests/
-├── unit/           Fungsi murni (119 test)
+├── unit/           Fungsi murni (129 test)
 ├── integration/    Modul nyata + PostgreSQL (35 test)
 └── live/           Provider sungguhan (10 test)
 ```
@@ -203,6 +203,23 @@ Aturan yang tidak bisa dilanggar:
 
 Rinciannya: [AGENTS.md](./AGENTS.md)
 
+## Pairing WhatsApp
+
+```bash
+pnpm osda:pair --code   # pairing code (disarankan di server)
+pnpm osda:pair          # QR (pindai dari HP)
+pnpm start              # jalankan bot
+```
+
+Dua nomor punya peran berbeda dan **wajib berbeda**:
+
+| Variabel | Arti |
+|---|---|
+| `WHATSAPP_LINK_PHONE` | Nomor akun **BOT** yang ditautkan ke Baileys |
+| `WHATSAPP_ADMIN_PHONE` | Nomor **pemilik** — tidak pernah dikirim ke WhatsApp |
+
+Detail: [docs/WHATSAPP-OPS.md](./docs/WHATSAPP-OPS.md)
+
 ## Perintah
 
 ```bash
@@ -216,6 +233,7 @@ pnpm osda status      # status komponen
 pnpm osda doctor      # diagnosis
 pnpm osda tools       # daftar tool
 pnpm osda skills      # daftar skill
+pnpm osda:pair        # pairing WhatsApp
 ```
 
 ## Lisensi

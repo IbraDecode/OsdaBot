@@ -28,6 +28,7 @@ import { mkdir, readFile, rename, rm, writeFile, chmod, readdir } from 'node:fs/
 import { join } from 'node:path'
 import {
   BufferJSON,
+  initAuthCreds,
   type AuthenticationCreds,
   type AuthenticationState,
   type SignalDataSet,
@@ -145,7 +146,12 @@ export async function loadSession(folder: string): Promise<SessionState> {
   const creds = await credsStore.load()
 
   const state: AuthenticationState = {
-    creds: creds ?? ({} as AuthenticationCreds),
+    // WAJIB: kalau belum ada session, Baileys butuh creds yang sudah
+    // di-init (noiseKey, signedIdentityKey, signedPreKey, advSecretKey…).
+    // Memberi objek kosong membuat `creds.noiseKey` undefined dan handshake
+    // gagal dengan "Cannot read properties of undefined (reading 'public')"
+    // — persis yang terjadi kalau initAuthCreds() dilewati.
+    creds: creds ?? initAuthCreds(),
     keys: keysStore,
   }
 
@@ -159,7 +165,7 @@ export async function loadSession(folder: string): Promise<SessionState> {
     await saveQueue
   }
 
-  return { state, saveCreds, folder, hasSession: Boolean(creds?.registered) }
+  return { state, saveCreds, folder, hasSession: creds?.registered === true }
 }
 
 /** Hapus seluruh session (dipakai saat logout/pairing ulang). */

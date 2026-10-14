@@ -20,6 +20,7 @@ import { env } from '../config/env.js'
 import { checkDatabaseHealth, prisma } from '../database/client.js'
 import { logger } from '../observability/logger.js'
 import { listSessionFiles } from '../whatsapp/session-store.js'
+import { maskPhone } from '../whatsapp/baileys-provider.js'
 import { MessageHandler } from '../pipeline/message-handler.js'
 
 const log = logger.child({ module: 'cli' })
@@ -95,8 +96,17 @@ register('doctor', 'Diagnosis masalah konfigurasi dan konektivitas', async () =>
   if (!ai.ok) problems.push(`AI provider bermasalah: ${ai.error ?? 'tidak diketahui'}`)
   else notes.push(`AI provider OK (${ai.latencyMs}ms)`)
 
-  if (!env.WHATSAPP_OWNER_PHONE) {
-    notes.push('WHATSAPP_OWNER_PHONE kosong — pairing code manual tidak bisa dijalankan.')
+  if (!env.WHATSAPP_LINK_PHONE) {
+    notes.push(
+      'WHATSAPP_LINK_PHONE kosong — nomor akun BOT belum diisi, jadi pairing code ' +
+        'tidak bisa dijalankan. (Bukan nomor admin.)',
+    )
+  } else {
+    notes.push(`Nomor akun bot : ${maskPhone(env.WHATSAPP_LINK_PHONE)}`)
+  }
+
+  if (env.WHATSAPP_ADMIN_PHONE) {
+    notes.push(`Nomor admin     : ${maskPhone(env.WHATSAPP_ADMIN_PHONE)}`)
   }
 
   if (env.NODE_ENV === 'production') {
@@ -148,9 +158,11 @@ register('whatsapp:status', 'Status koneksi WhatsApp', async () => {
     `Berkas        : ${sessionFiles.length}`,
     `Credentials   : ${hasCreds ? 'ada' : 'belum ada'}`,
     `Nama bot      : ${env.WHATSAPP_BOT_NAME}`,
+    `Nomor bot     : ${env.WHATSAPP_LINK_PHONE ? maskPhone(env.WHATSAPP_LINK_PHONE) : '(belum diisi)'}`,
+    `Nomor admin   : ${env.WHATSAPP_ADMIN_PHONE ? maskPhone(env.WHATSAPP_ADMIN_PHONE) : '(belum diisi)'}`,
     '',
-    'Catatan: status koneksi live hanya terlihat dari aplikasi yang sedang jalan.',
-    'Jalankan `pnpm start` lalu lihat log untuk status realtime.',
+    'Nomor bot adalah akun yang DITAUTKAN ke Baileys.',
+    'Nomor admin adalah pemilik yang mengendalikan — tidak pernah dikirim ke WhatsApp.',
   ])
 })
 

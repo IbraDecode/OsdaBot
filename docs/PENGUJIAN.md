@@ -52,7 +52,7 @@ const dummy = {
 }
 ```
 
-## Unit (119 test)
+## Unit (129 test)
 
 ### `tests/unit/jid.test.ts`
 
@@ -129,7 +129,27 @@ organisasi terpisah, validasi input menolak JSON rusak, batas jumlah tool call.
 
 ### `tests/unit/server.test.ts`
 
-Verifikasi signature BaturPay: valid, salah panjang, salah isi.
+Verifikasi signature BaturPay:
+
+- Signature benar diterima.
+- Secret salah ditolak.
+- **Body dimodifikasi ditolak** — ini skenario serangan: ubah amount dari
+  25.000 jadi 1.000 tapi pakai signature body asli.
+- Timestamp berbeda ditolak (anti-replay).
+- Panjang salah & non-hex ditolak tanpa melempar error.
+- `timingSafeEqual` dipakai, bukan `===`.
+- Status tak dikenal → `undefined`, bukan default berbahaya.
+
+### `tests/unit/phone-config.test.ts`
+
+Dua nomor WhatsApp punya peran berbeda. Test ini mengunci perbedaan itu:
+
+- `maskPhone` menyembunyikan bagian tengah, tidak pernah mengembalikan nomor
+  lengkap.
+- Format dengan `+`, spasi, atau tanda hubung ditolak.
+- Nomor di luar 8–15 digit ditolak.
+- **Nomor bot yang sama dengan nomor admin ditolak** — guardrail agar akun
+  pemilik tidak ikut ter-link sebagai bot.
 
 ## Integrasi (35 test)
 

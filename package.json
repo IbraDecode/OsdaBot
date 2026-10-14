@@ -24,7 +24,8 @@
     "db:studio": "prisma studio",
     "db:seed": "tsx --env-file-if-exists=.env src/database/seed.ts",
     "lint": "tsc --noEmit",
-    "check": "pnpm typecheck && pnpm test"
+    "check": "pnpm typecheck && pnpm test",
+    "osda:pair": "tsx --env-file-if-exists=.env src/cli/pair.ts"
   },
   "dependencies": {
     "@prisma/client": "6.16.2",

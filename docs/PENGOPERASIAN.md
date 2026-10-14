@@ -51,6 +51,7 @@ pnpm osda skills          # daftar skill termuat
 pnpm osda capabilities    # kemampuan aktif
 pnpm osda whatsapp:status # status session WhatsApp
 pnpm osda whatsapp:files  # isi folder session
+pnpm osda:pair           # pairing WhatsApp (--code untuk pairing code)
 pnpm osda org:list        # daftar organisasi
 pnpm osda db:seed         # isi data contoh
 pnpm osda help            # daftar perintah
@@ -92,25 +93,34 @@ kredensial atau konfigurasi.
 
 ## Pairing WhatsApp
 
+### Pairing code (disarankan)
+
+```bash
+pnpm osda:pair --code
+```
+
+Nomor bot dibaca dari `WHATSAPP_LINK_PHONE`. Kode ditampilkan di terminal,
+lalu dimasukkan dari WhatsApp **nomor bot** → Perangkat Tertaut → Tautkan
+Perangkat.
+
 ### Lewat QR
 
 ```bash
-WHATSAPP_BOT_NAME=Osda pnpm start
+pnpm osda:pair
 ```
 
-QR muncul di log. Pindai dari WhatsApp → Perangkat Tertaut → Tautkan
-perangkat.
+QR digambar di terminal. Pindai dari HP.
 
-### Lewat pairing code
+### Catatan nomor
 
-```bash
-WHATSAPP_OWNER_PHONE=6281234567890 pnpm start
-```
+| Variabel | Arti |
+|---|---|
+| `WHATSAPP_LINK_PHONE` | Nomor akun **BOT** yang ditautkan |
+| `WHATSAPP_ADMIN_PHONE` | Nomor **pemilik/admin**, tidak dikirim ke WhatsApp |
 
-**Hanya nomor yang Anda miliki atau sudah diizinkan untuk ditautkan.** Format:
-digits + kode negara, tanpa `+`, `-`, `()`, atau spasi.
+Keduanya wajib berbeda. Pairing code berlaku **satu perangkat** per nomor.
 
-Pairing code berlaku **satu perangkat** per nomor.
+Rincian: [WHATSAPP-OPS.md](./WHATSAPP-OPS.md)
 
 ## Troubleshooting
 

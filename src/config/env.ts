@@ -43,7 +43,17 @@ const envSchema = z
 
     // --- WhatsApp ---
     WHATSAPP_SESSION_DIR: z.string().default('./auth_info_baileys'),
-    WHATSAPP_OWNER_PHONE: optionalString,
+    /**
+     * Nomor akun yang AKAN DITAUTKAN ke Baileys — yaitu nomor BOT.
+     * Ini yang dikirim ke `sock.requestPairingCode()`. Kalau diisi nomor yang
+     * salah, akun itu yang tertaut sebagai bot.
+     */
+    WHATSAPP_LINK_PHONE: optionalString,
+    /**
+     * Nomor pemilik/admin yang mengendalikan. TIDAK pernah dikirim ke
+     * WhatsApp; dipakai untuk penyaringan & audit.
+     */
+    WHATSAPP_ADMIN_PHONE: optionalString,
     WHATSAPP_BOT_NAME: z.string().default('Osda'),
     WHATSAPP_MARK_ONLINE_ON_CONNECT: z.preprocess(emptyToUndefined, booleanish.default('false')),
 
@@ -110,15 +120,40 @@ const envSchema = z
       }
     }
 
-    if (value.NODE_ENV === 'production' && value.WHATSAPP_OWNER_PHONE) {
-      const nomor = value.WHATSAPP_OWNER_PHONE.replace(/[^0-9]/g, '')
-      if (nomor.length < 8 || nomor.length > 15) {
+    // Nomor WhatsApp divalidasi sebagai digits + kode negara.
+    const nomorValid = (value: string | undefined): boolean => {
+      if (!value) return true
+      return /^\d{8,15}$/.test(value)
+    }
+
+    for (const [key, label] of [
+      ['WHATSAPP_LINK_PHONE', 'nomor akun bot yang akan ditautkan'],
+      ['WHATSAPP_ADMIN_PHONE', 'nomor admin'],
+    ] as const) {
+      if (!nomorValid(value[key])) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ['WHATSAPP_OWNER_PHONE'],
-          message: 'Format nomor WhatsApp tidak valid (harus 8-15 digit, mis. 6281234567890)',
+          path: [key],
+          message: `Format tidak valid untuk ${label}. Gunakan digits + kode negara tanpa '+', '-', spasi, atau kurung.`,
         })
       }
+    }
+
+    // Guardrails: nomor bot dan nomor admin tidak boleh sama. Kalau sama,
+    // kemungkinan besar ada kesalahan isi di konfigurasi — dan akun pemilik bisa
+    // ikut ter-link sebagai bot.
+    if (
+      value.WHATSAPP_LINK_PHONE &&
+      value.WHATSAPP_ADMIN_PHONE &&
+      value.WHATSAPP_LINK_PHONE === value.WHATSAPP_ADMIN_PHONE
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['WHATSAPP_LINK_PHONE'],
+        message:
+          'WHATSAPP_LINK_PHONE (akun bot) tidak boleh sama dengan WHATSAPP_ADMIN_PHONE. ' +
+          'Kalau memang sama, kosongkan ADMIN_PHONE.',
+      })
     }
   })
 

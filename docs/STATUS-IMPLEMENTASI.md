@@ -29,7 +29,9 @@ Status memakai lima tingkat:
 | Tool registry | `TESTED` | 15 tool, otorisasi per tool |
 | HTTP server | `TESTED` | `/health`, `/ready` jalan |
 | CLI | `IMPLEMENTED` | 10 perintah, membaca data nyata |
-| **WhatsApp live** | `NOT VERIFIED` | Adapter ada, pairing belum |
+| WhatsApp handshake | `VERIFIED` | Noise handshake berhasil, QR & pairing code dibuat |
+| **WhatsApp pairing** | `PENDING SCAN` | Kode pairing berhasil dibuat, menunggu dipindai dari HP |
+| **WhatsApp live** | `NOT VERIFIED` | Adapter ada, pairing belum selesai |
 | **BaturPay live** | `NOT VERIFIED` | Adapter ada, transaksi belum |
 | Automation / BullMQ | `NOT IMPLEMENTED` | — |
 | Document engine | `NOT IMPLEMENTED` | — |
@@ -111,10 +113,10 @@ Setiap perintah **membaca kondisi nyata** dari database dan provider.
 
 | Yang diukur | Nilai |
 |---|---|
-| Test unit | 119 lulus |
+| Test unit | 129 lulus |
 | Test integrasi | 35 lulus |
 | Test live | 10 lulus (dengan `RUN_LIVE_TESTS=true`) |
-| **Total** | **154 lulus, 0 gagal** |
+| **Total** | **164 lulus, 0 gagal** |
 | Tool terdaftar | 15 |
 | Skill termuat | 3 |
 | Permission | 50 |
