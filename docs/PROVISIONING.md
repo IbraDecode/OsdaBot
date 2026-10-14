@@ -67,13 +67,46 @@ Opsi lain:
 
 Provisioning **tidak pernah** mengisi `verifiedAt`.
 
-Nomor di environment adalah **klaim**, bukan bukti. Kalau provisioning
-mengisi `verifiedAt`, siapa pun yang bisa menulis `.env` otomatis bisa masuk ke
-organisasi. Verifikasi berarti-human adalah langkah terpisah — orangnya harus
-membuktikan kepemilikan nomor dari dalam WhatsApp.
+Nomor di environment adalah **klaim**, bukan bukti. Kalau provisioning mengisi
+`verifiedAt`, sistem akan menyatakan "nomor ini sudah dibuktikan miliknya" —
+padahal tidak ada yang membuktikannya. Verifikasi berarti-human adalah langkah
+terpisah: orangnya harus membuktikan kepemilikan nomor dari dalam WhatsApp.
 
-Konsekuensi: sampai verifikasi dilakukan, bot akan memperlakukan pengirim
-sebagai belum terverifikasi meskipun sudah punya izin.
+### Yang sebenarnya terjadi (sudah diuji, bukan ditebak)
+
+`verifiedAt` **tidak** menentukan apakah orang bisa memakai bot.
+
+```
+WhatsAppIdentity.userId  →  User
+                             →  OrganizationMember.userId
+                                   →  MemberRoleBinding → RolePermission
+```
+
+Rantai itu yang menentukan akses. `verifiedAt` adalah **penanda kepercayaan
+yang terpisah** — ia menyatakan "nomor ini sudah dibuktikan miliknya", bukan
+"orang ini punya akses".
+
+Hasil pengukuran nyata setelah `org:create`:
+
+```
+userId     : ADA
+memberId   : ADA
+isVerified : true      ← karena memberId ada, bukan karena verifiedAt
+organisasi : Uji Resolve
+BOT BISA JALAN: true
+```
+
+Jadi begitu `org:create` selesai, admin **sudah bisa** memakai bot. Tidak ada
+langkah verifikasi tambahan yang menghalangi.
+
+`isVerified` dianggap `true` begitu ada keanggotaan:
+
+```ts
+isVerified: Boolean(waIdentity.verifiedAt) || Boolean(memberId)
+```
+
+Itu disengaja. Keanggotaan berarti seseorang pernah memutuskan — bukan
+sekadar nomor yang kebetulan ada di file konfigurasi.
 
 ---
 
@@ -126,7 +159,7 @@ tambah perintah `org:drop` (belum ada).
 
 ---
 
-## 8. Status
+## 9. Status
 
 | Yang | Status |
 |---|---|
@@ -136,5 +169,8 @@ tambah perintah `org:drop` (belum ada).
 | Rantai izin (RBAC) | `VERIFIED` — owner dapat 50/50 permission |
 | Idempotensi | `VERIFIED` — dijalankan 2× di database sungguhan |
 | `verifiedAt` dikosongkan | `VERIFIED` |
+| Onboarding anggota non-admin | `VERIFIED` — impor 5 baris ke DB sungguhan |
+| Alias peran Indonesia | `VERIFIED` |
+| Anggota tanpa nomor | `VERIFIED` |
 | Diterima lewat WhatsApp | `NOT VERIFIED` — pairing masih terblokir 429 |
-| Onboarding anggota non-admin | **Belum ada** — hanya `linkAdmin` |
+| Penghapusan anggota (`org:drop`) | **Belum ada** |

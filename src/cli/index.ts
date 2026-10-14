@@ -14,6 +14,8 @@
  *   pnpm osda org:list          — daftar organisasi
  *   pnpm osda org:create        — buat organisasi nyata + hubungkan nomor admin
  *   pnpm osda org:show          — detail organisasi (anggota, nomor, peran)
+ *   pnpm osda org:add-member    — tambah satu anggota
+ *   pnpm osda org:import-members— impor massal dari teks/berkas
  *   pnpm osda db:seed           — isi data contoh
  */
 
@@ -23,7 +25,10 @@ import { checkDatabaseHealth, prisma } from '../database/client.js'
 import { logger } from '../observability/logger.js'
 import { listSessionFiles } from '../whatsapp/session-store.js'
 import { maskPhone } from '../whatsapp/baileys-provider.js'
+import { existsSync, readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { OrganizationProvisioner } from '../organization/provisioning.js'
+import { MemberProvisioner } from '../organization/member-onboarding.js'
 import { MessageHandler } from '../pipeline/message-handler.js'
 
 const log = logger.child({ module: 'cli' })
@@ -335,6 +340,146 @@ register('org:show', 'Tampilkan detail organisasi (anggota, nomor, peran)', asyn
     '',
     ...lines,
   ])
+  await prisma.$disconnect()
+})
+
+register('org:add-member', 'Tambah satu anggota ke organisasi', async () => {
+  const args = parseArgs(process.argv.slice(3))
+  const slug = args.slug
+  const nama = args.name
+  const telepon = args.phone
+
+  if (!slug || !nama) {
+    console.error('Wajib: --slug=... --name="Nama Lengkap" --phone=628xxxxxxxxx')
+    await prisma.$disconnect()
+    process.exit(1)
+  }
+
+  const org = await prisma.organization.findUnique({ where: { slug }, select: { id: true, name: true } })
+  if (!org) {
+    console.error(`Organisasi "${slug}" tidak ditemukan.`)
+    await prisma.$disconnect()
+    process.exit(1)
+  }
+
+  const provisioner = new MemberProvisioner(prisma as never)
+  const results = await provisioner.addMembers({
+    organizationId: org.id,
+    members: [
+      {
+        fullName: nama,
+        phone: telepon ?? '',
+        ...(args.role ? { roleKey: args.role } : {}),
+        ...(args.class ? { className: args.class } : {}),
+        ...(args.aliases ? { aliases: args.aliases.split(',').map((a) => a.trim()).filter(Boolean) } : {}),
+      },
+    ],
+    ...(args.role ? { defaultRoleKey: args.role } : {}),
+  })
+  const hasil = results[0]
+
+  if (!hasil || hasil.status === 'skipped') {
+    console.error(`Gagal: ${hasil?.reason ?? 'tidak diketahui'}`)
+    await prisma.$disconnect()
+    process.exit(1)
+  }
+
+  box('ANGGOTA DITAMBAHKAN', [
+    `Organisasi : ${org.name}`,
+    `Nama       : ${hasil.fullName}`,
+    `Nomor      : ${hasil.phone ? maskPhone(hasil.phone) : '(belum diisi)'}`,
+    `Status     : ${hasil.status === 'created' ? 'baru dibuat' : 'sudah ada, diperbarui'}`,
+  ])
+  await prisma.$disconnect()
+})
+
+register('org:import-members', 'Impor banyak anggota dari teks atau berkas', async () => {
+  const args = parseArgs(process.argv.slice(3))
+  const slug = args.slug
+  const sumber = args.file
+
+  if (!slug) {
+    console.error('Wajib: --slug=...')
+    console.error('Sumber data: --file=anggota.txt  atau  --text="Nama | 628xxx | peran"')
+    console.error('')
+    console.error('Format tiap baris:')
+    console.error('  Nama | 628xxxxxxxxx | peran | kelas | alias1,alias2')
+    console.error('')
+    console.error('Contoh isi berkas:')
+    console.error('  # baris diawali # diabaikan')
+    console.error('  Budi Santoso | 6281234567890 | anggota | X AKL 3 | budi,budi_s')
+    console.error('  Siti Aminah  |                  | anggota | XI IPA 2')
+    await prisma.$disconnect()
+    process.exit(1)
+  }
+
+  let text: string
+  if (sumber) {
+    const path = resolve(process.cwd(), sumber)
+    if (!existsSync(path)) {
+      console.error(`Berkas tidak ditemukan: ${path}`)
+      await prisma.$disconnect()
+      process.exit(1)
+    }
+    text = readFileSync(path, 'utf-8')
+  } else if (args.text) {
+    text = args.text.replace(/\\n/g, '\n')
+  } else {
+    console.error('Sebutkan --file=... atau --text="..."')
+    await prisma.$disconnect()
+    process.exit(1)
+  }
+
+  const org = await prisma.organization.findUnique({ where: { slug }, select: { id: true, name: true } })
+  if (!org) {
+    console.error(`Organisasi "${slug}" tidak ditemukan.`)
+    await prisma.$disconnect()
+    process.exit(1)
+  }
+
+  const { members, errors } = MemberProvisioner.parseText(text)
+  const provisioner = new MemberProvisioner(prisma as never)
+
+  const peranTersedia = await provisioner.listRoles(org.id)
+  console.log(`  Peran tersedia: ${peranTersedia.join(', ')}`)
+
+  if (errors.length > 0) {
+    console.log(`\n  ${errors.length} baris dilewati:`)
+    for (const message of errors.slice(0, 10)) console.log(`    - ${message}`)
+    if (errors.length > 10) console.log(`    ... dan ${errors.length - 10} lagi`)
+  }
+
+  if (members.length === 0) {
+    console.log('\n  Tidak ada anggota valid untuk diimpor.')
+    await prisma.$disconnect()
+    process.exit(1)
+  }
+
+  const results = await provisioner.addMembers({
+    organizationId: org.id,
+    members,
+    ...(args.role ? { defaultRoleKey: args.role } : {}),
+  })
+
+  const dibuat = results.filter((r) => r.status === 'created').length
+  const diperbarui = results.filter((r) => r.status === 'updated').length
+  const dilewati = results.filter((r) => r.status === 'skipped').length
+
+  box('HASIL IMPOR', [
+    `Organisasi : ${org.name}`,
+    `Dibaca     : ${members.length}`,
+    `Baru       : ${dibuat}`,
+    `Diperbarui : ${diperbarui}`,
+    `Dilewati   : ${dilewati}`,
+  ])
+
+  if (dilewati > 0) {
+    console.log('\n  Yang dilewati:')
+    for (const item of results.filter((r) => r.status === 'skipped').slice(0, 10)) {
+      console.log(`    - ${item.fullName}: ${item.reason}`)
+    }
+  }
+
   await prisma.$disconnect()
 })
 

@@ -23,8 +23,15 @@
  *                                                                           └─→ RolePermission
  *
  * Ada satu hal yang TIDAK boleh diotomatisasi: `verifiedAt`. Nomor di
- * environment adalah klaim, belum bukti. Backend tidak boleh menganggap
- * terverifikasi hanya karena nomor itu ada di file konfigurasi.
+ * environment adalah klaim, belum bukti. Mengisinya berarti menyatakan
+ * "nomor ini sudah dibuktikan miliknya", dan tidak ada yang membuktikannya.
+ *
+ * CATATAN: `verifiedAt` TIDAK menentukan boleh-tidaknya memakai bot.
+ * Yang menentukan adalah rantai
+ * `identity.userId -> User -> Member -> MemberRoleBinding -> RolePermission`.
+ * `verifiedAt` adalah penanda kepercayaan yang terpisah. Verified secara
+ * empiris: setelah `linkAdmin`, `resolveSender()` mengembalikan userId,
+ * memberId, dan organisasi — bot langsung bisa dipakai.
  */
 import type { PrismaClient } from '@prisma/client'
 import { canonicalizeName } from '../identity/name-normalizer.js'
@@ -190,9 +197,11 @@ export class OrganizationProvisioner {
    * peran ganda.
    *
    * CATATAN KEAMANAN: `verifiedAt` SENGAJA TIDAK diisi. Nomor dari environment
-   * adalah klaim, bukan bukti. Verifikasi berarti-human adalah langkah
-   * terpisah (`pnpm osda org:verify`), dilakukan setelah orangnya menyetujui
-   * dari dalam WhatsApp.
+   * adalah klaim, bukan bukti — mengisinya berarti menyatakan sesuatu yang
+   * tidak pernah dibuktikan.
+   *
+   * Ini TIDAK memblokir akses: rantai `userId -> Member -> Role` yang
+   * menentukan izin, dan itu sudah terisi di sini.
    */
   async linkAdmin(input: ProvisionAdminInput): Promise<LinkResult> {
     const digits = assertValidPhone(input.phone)

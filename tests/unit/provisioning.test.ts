@@ -280,11 +280,15 @@ describe('OrganizationProvisioner.linkAdmin', () => {
   })
 
   it('TIDAK menandai identitas sebagai terverifikasi', async () => {
-    // Ini keputusan keamanan yang disengaja.
+    // Ini keputusan yang disengaja.
     //
-    // Nomor dari environment adalah klaim. Backend tidak boleh menganggap
-    // terverifikasi hanya karena nomor itu ada di file konfigurasi — kalau
-    // tidak, siapa pun yang bisa menulis .env bisa masuk ke organisasi.
+    // Nomor dari environment adalah klaim. Mengisi `verifiedAt` berarti
+    // menyatakan "nomor ini sudah dibuktikan miliknya" — dan tidak ada yang
+    // membuktikannya.
+    //
+    // PENTING: ini TIDAK memblokir akses. Yang menentukan izin adalah rantai
+    // identity.userId -> User -> Member -> Role. Mengosongkan `verifiedAt`
+    // berarti tidak menyatakan falsehood, bukan memblokir orang.
     const { prisma, state } = buatPrismaPalsu()
     const provisioner = new OrganizationProvisioner(prisma as never)
     const org = await provisioner.createOrganization({ name: 'OSIS SMA 1' })

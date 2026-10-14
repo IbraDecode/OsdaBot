@@ -52,7 +52,7 @@ const dummy = {
 }
 ```
 
-## Unit (211 test)
+## Unit (236 test)
 
 ### `tests/unit/jid.test.ts`
 
@@ -153,6 +153,23 @@ Verifikasi signature BaturPay:
 
 Test ini sengaja **menyalin** logika `getCompanionWebClientType()` dari Baileys.
 Kalau Baileys mengubah pemetaannya, test gagal — bukan diam-diam merusak pairing.
+
+### `tests/unit/member-onboarding.test.ts` (25 test)
+
+Impor anggota massal:
+
+- Parser: format lengkap, komentar, nomor kosong, nomor bertanda kurung.
+- **Nomor yang disebut tapi salah ditolak**; **nomor kosong diizinkan**
+  (daftar hadir bekerja lewat nama).
+- **Nama yang hanya simbol ditolak** — `canonicalizeName('!!!')` mengembalikan
+  `'!!!'`, bukan string kosong.
+- Baris salah tidak menghentikan baris lain.
+- Nama yang sudah ada digabung, tidak diduplikasi.
+- Peran yang sudah ada dipertahankan saat impor ulang.
+- Maksimal 500 anggota per batch.
+- `verifiedAt` tidak pernah diisi.
+- Alias peran Indonesia → kunci kanonik; kunci tak dikenal dikembalikan
+  apa adanya supaya pesan galat menyebut input asli.
 
 ### `tests/unit/provisioning.test.ts` (21 test)
 
