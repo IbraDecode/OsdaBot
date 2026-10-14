@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+@theme {
+  --font-serif: "Playfair Display", Georgia, Cambria, "Times New Roman", Times, serif;
+  --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+
+  /* Palet Kemewahan & Identitas SMKN 2 Mataram (Navy, Gold, Ivory) */
+  --color-navy-950: #050B18;
+  --color-navy-900: #0B132B;
+  --color-navy-800: #132247;
+  --color-navy-700: #1C3166;
+  --color-navy-600: #264388;
+
+  --color-emas-700: #93712B;
+  --color-emas-600: #B28B38;
+  --color-emas-500: #C5A059;
+  --color-emas-400: #D8B775;
+  --color-emas-300: #E6CE9C;
+  --color-emas-100: #F7EEDB;
+  --color-emas-50:  #FCF9F2;
+
+  --color-ivory-50:  #FAF9F6;
+  --color-ivory-100: #F4F2EC;
+  --color-ivory-200: #E8E6DF;
+
+  --color-merek-50: #f0f7ff;
+  --color-merek-100: #e0effe;
+  --color-merek-500: #0284c7;
+  --color-merek-600: #0369a1;
+  --color-merek-700: #075985;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    background-color: #FAF9F6;
+    color: #0B132B;
+  }
+
+  body {
+    background-color: #FAF9F6;
+    color: #0B132B;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  :focus-visible {
+    outline: 2px solid #C5A059;
+    outline-offset: 2px;
+  }
+}

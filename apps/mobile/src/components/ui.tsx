@@ -1,63 +1,97 @@
 /**
- * Komponen UI dasar Mobile.
- *
- * Sengaja sederhana: hanya komponen yang benar-benar dipakai. Warna memakai
- * palet `tailwind` agar konsisten dengan Web Dashboard.
+ * Komponen UI Dasar Mobile OSDA BOT.
+ * Identitas Visual: Navy (#0B132B), Emas/Gold (#C5A059), Ivory (#FAF9F6).
  */
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 
-/** Warna aksi cepat. */
-const WARNA_NADA = {
-  sky: 'bg-sky-600',
-  emerald: 'bg-emerald-600',
-  amber: 'bg-amber-500',
-  violet: 'bg-violet-600',
-  slate: 'bg-slate-600',
-} as const;
-
-/** Nada warna aksi cepat. */
-export type Nada = keyof typeof WARNA_NADA;
-
-/** Kotak aksi cepat (tombol besar di beranda). */
-export function KotakAksi({
+export function KotakAksiEmas({
   label,
-  nada = 'slate',
+  sublabel,
   onTekan,
 }: {
-  label: string;
-  nada?: Nada;
-  onTekan?: () => void;
+  readonly label: string;
+  readonly sublabel?: string;
+  readonly onTekan?: () => void;
 }): React.ReactElement {
   return (
     <Pressable
       onPress={onTekan}
       accessibilityRole="button"
       accessibilityLabel={label}
-      className={`min-w-[100px] flex-1 items-center rounded-xl px-3 py-4 ${WARNA_NADA[nada]}`}
+      style={{
+        backgroundColor: '#132247',
+        borderColor: 'rgba(197, 160, 89, 0.4)',
+        borderWidth: 1,
+        borderRadius: 16,
+        paddingVertical: 14,
+        paddingHorizontal: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        flex: 1,
+        minWidth: 75,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 2,
+      }}
     >
-      <Text className="text-sm font-bold text-white">{label}</Text>
+      <Text style={{ fontSize: 13, fontWeight: '700', color: '#FAF9F6', letterSpacing: 0.5 }}>
+        {label}
+      </Text>
+      {sublabel ? (
+        <Text style={{ fontSize: 10, color: '#C5A059', marginTop: 2, fontWeight: '500' }}>
+          {sublabel}
+        </Text>
+      ) : null}
     </Pressable>
   );
 }
 
-/** Kartu berisi satu kelompok informasi. */
+export function KotakAksi({
+  label,
+  nada = 'slate',
+  onTekan,
+}: {
+  readonly label: string;
+  readonly nada?: 'sky' | 'emerald' | 'amber' | 'violet' | 'slate';
+  readonly onTekan?: () => void;
+}): React.ReactElement {
+  return <KotakAksiEmas label={label} onTekan={onTekan} />;
+}
+
 export function Kartu({
   judul,
   aksi,
   children,
 }: {
-  judul: string;
-  aksi?: { label: string; onTekan: () => void };
-  children: React.ReactNode;
+  readonly judul: string;
+  readonly aksi?: { label: string; onTekan: () => void };
+  readonly children: React.ReactNode;
 }): React.ReactElement {
   return (
-    <View className="rounded-xl border border-slate-200 bg-white p-4 gap-3">
-      <View className="flex-row items-center justify-between">
-        <Text className="font-semibold text-slate-900">{judul}</Text>
+    <View
+      style={{
+        backgroundColor: '#FFFFFF',
+        borderColor: '#E8E6DF',
+        borderWidth: 1,
+        borderRadius: 16,
+        padding: 16,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 3,
+        elevation: 1,
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'between', marginBottom: 12 }}>
+        <Text style={{ fontSize: 15, fontWeight: '700', color: '#0B132B' }}>
+          {judul}
+        </Text>
         {aksi ? (
           <Pressable onPress={aksi.onTekan} accessibilityRole="button">
-            <Text className="text-sm font-medium text-sky-700">{aksi.label}</Text>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: '#C5A059' }}>{aksi.label}</Text>
           </Pressable>
         ) : null}
       </View>
@@ -66,69 +100,46 @@ export function Kartu({
   );
 }
 
-/** Satu baris ringkasan: judul, keterangan, dan nilai/status di kanan. */
 export function BarisRingkas({
   judul,
   keterangan,
-  nilai,
-  sorot = false,
-  onTekan,
+  status,
 }: {
-  judul: string;
-  keterangan?: string;
-  nilai?: string;
-  sorot?: boolean;
-  onTekan?: () => void;
+  readonly judul: string;
+  readonly keterangan?: string | null;
+  readonly status?: string | null;
 }): React.ReactElement {
   return (
-    <Pressable
-      onPress={onTekan}
-      className={`flex-row items-center justify-between gap-3 rounded-lg border px-3 py-2 ${
-        sorot ? 'border-amber-300 bg-amber-50' : 'border-slate-100'
-      }`}
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F4F2EC',
+      }}
     >
-      <View className="flex-1 gap-0.5">
-        <Text className="text-sm font-medium text-slate-900" numberOfLines={2}>
-          {judul}
-        </Text>
-        {keterangan ? <Text className="text-xs text-slate-500">{keterangan}</Text> : null}
+      <View style={{ flex: 1, paddingRight: 12 }}>
+        <Text style={{ fontSize: 13, fontWeight: '600', color: '#0B132B' }}>{judul}</Text>
+        {keterangan ? (
+          <Text style={{ fontSize: 11, color: '#718096', marginTop: 2 }}>{keterangan}</Text>
+        ) : null}
       </View>
-      {nilai ? (
-        <Text className="text-xs font-semibold text-slate-600" numberOfLines={1}>
-          {nilai}
-        </Text>
+      {status ? (
+        <View
+          style={{
+            backgroundColor: '#FCF9F2',
+            borderColor: 'rgba(197, 160, 89, 0.4)',
+            borderWidth: 1,
+            borderRadius: 8,
+            paddingHorizontal: 8,
+            paddingVertical: 4,
+          }}
+        >
+          <Text style={{ fontSize: 10, fontWeight: '700', color: '#93712B' }}>{status}</Text>
+        </View>
       ) : null}
-    </Pressable>
-  );
-}
-
-/** Lencana status berwarna. */
-export function Lencana({
-  teks,
-  nada = 'slate',
-}: {
-  teks: string;
-  nada?: Nada;
-}): React.ReactElement {
-  const pegas = {
-    sky: 'bg-sky-100 text-sky-800',
-    emerald: 'bg-emerald-100 text-emerald-800',
-    amber: 'bg-amber-100 text-amber-800',
-    violet: 'bg-violet-100 text-violet-800',
-    slate: 'bg-slate-100 text-slate-700',
-  }[nada];
-  return (
-    <View className={`self-start rounded-full px-2 py-0.5 ${pegas}`}>
-      <Text className="text-[11px] font-semibold">{teks}</Text>
-    </View>
-  );
-}
-
-/** Pesan kosong atau keterangan galat untuk sebuah layar. */
-export function PesanKosong({ teks }: { teks: string }): React.ReactElement {
-  return (
-    <View className="items-center justify-center gap-2 p-8">
-      <Text className="text-center text-sm text-slate-500">{teks}</Text>
     </View>
   );
 }

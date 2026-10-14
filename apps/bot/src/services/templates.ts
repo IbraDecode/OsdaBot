@@ -36,7 +36,8 @@ export const EMOJI = {
   GALAT: '❌',
 } as const;
 
-const NAMA_APLIKASI = 'OSDA';
+const NAMA_APLIKASI = 'OSDA BOT';
+const SUBTITLE_APLIKASI = 'OSIS SMKN 2 MATARAM';
 
 /** Label ramah untuk status kehadiran (dipakai di semua balasan). */
 export function labelStatusHadir(status: StatusHadir): string {

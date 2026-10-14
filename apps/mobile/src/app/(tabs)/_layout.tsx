@@ -1,8 +1,8 @@
 /**
- * Navigasi tab bawah.
- *
- * Navigasi Mobile SENGAJA tidak meniru sidebar Web 1:1 (spec §65). Mobile
- * fokus pada quick action: Beranda, Tugas, Notifikasi, Profil.
+ * Navigasi Tab Bawah Mobile OSDA BOT:
+ * Sesuai konsep desain poin 6:
+ * Lima menu utama: Beranda, Agenda, Tugas, Notifikasi, dan Profil.
+ * Warna: Navy (#0B132B), Emas (#C5A059), Ivory (#FAF9F6).
  */
 import React from 'react';
 import { Tabs } from 'expo-router';
@@ -14,16 +14,23 @@ export default function LayoutTab(): React.ReactElement {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: '#0369a1',
-        tabBarInactiveTintColor: '#64748b',
+        tabBarActiveTintColor: '#C5A059',
+        tabBarInactiveTintColor: '#A0AEC0',
         tabBarStyle: {
-          paddingBottom: dalam.bottom,
-          borderTopColor: '#e2e8f0',
-          backgroundColor: '#ffffff',
+          paddingBottom: Math.max(dalam.bottom, 6),
+          paddingTop: 6,
+          height: 60 + Math.max(dalam.bottom, 0),
+          borderTopColor: '#E8E6DF',
+          backgroundColor: '#0B132B',
+        },
+        tabBarLabelStyle: {
+          fontSize: 10,
+          fontWeight: '600',
         },
       }}
     >
       <Tabs.Screen name="index" options={{ title: 'Beranda' }} />
+      <Tabs.Screen name="agenda" options={{ title: 'Agenda' }} />
       <Tabs.Screen name="tugas" options={{ title: 'Tugas' }} />
       <Tabs.Screen name="notifikasi" options={{ title: 'Notifikasi' }} />
       <Tabs.Screen name="profil" options={{ title: 'Profil' }} />
