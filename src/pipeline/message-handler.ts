@@ -7,6 +7,7 @@
  */
 import { randomUUID } from 'node:crypto'
 import type { AgentRuntime } from '../agent/runtime.js'
+import type { ApprovalEngine } from '../approvals/engine.js'
 import type { AttendanceService } from '../attendance/service.js'
 import { env } from '../config/env.js'
 import type { IdentityEngine } from '../identity/resolver.js'
@@ -41,6 +42,13 @@ export interface MessageHandlerDeps {
   skills: SkillRegistry
   whatsapp: WhatsAppProvider
   attendance: AttendanceService
+  /**
+   * Engine persetujuan.
+   *
+   * Wajib ada: tanpa ini, "iya"/"batal" diperlakukan sebagai percakapan biasa
+   * dan tindakan yang disetujui tidak pernah dijalankan.
+   */
+  approvals: ApprovalEngine
   /** Versi aplikasi untuk log. */
   version?: string
 }
@@ -103,6 +111,24 @@ export class MessageHandler {
     }
 
     const organization = resolved.organization
+
+    // Balasan persetujuan dicek setelah identitas diketahui (butuh actorUserId
+    // untuk mencocokkan dengan pemohon), tapi SEBELUM agent berjalan.
+    //
+    // Urutan ini penting: kalau dicek setelah agent, "iya" akan sampai ke model
+    // dan bisa ditafsirkan ulang menjadi perintah lain.
+    if (resolved.identity.userId) {
+      const intent = await this.deps.approvals.tryHandleReply({
+        text: message.text,
+        chatJid: message.chatJid,
+        actorUserId: resolved.identity.userId,
+      })
+
+      if (intent !== 'none') {
+        childLog.info({ intent }, 'pesan diperlakukan sebagai balasan persetujuan')
+        return
+      }
+    }
 
     if (!organization) {
       await this.reply(

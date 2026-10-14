@@ -861,10 +861,22 @@ model Approval {
   /// Hash payload — persetujuan TIDAK BERLAKU kalau isi payload berubah.
   payloadHash    String
   payloadPreview String?
+  /// Payload asli, disimpan supaya tindakan bisa dijalankan setelah disetujui.
+  /// Tanpa ini persetujuan jadi tidak berguna: tidak ada yang bisa dieksekusi.
+  payload        Json?
+  /// Chat tempat permintaan persetujuan dikirim. Balasan setuju/batal hanya
+  /// diterima dari chat yang sama — mencegah orang lain menyetujui lewat
+  /// chat grup yang memang diaeil.
+  chatJid        String?
+  /// Correlation id agent, untuk mengaitkan kembali ke satu putaran percakapan.
+  correlationId  String?
   status         ApprovalStatus @default(PENDING)
   expiresAt      DateTime
   resolvedAt     DateTime?
   resolvedBy     String?        @db.Uuid
+  /// Kapan tindakan benar-benar dieksekusi setelah disetujui.
+  /// Satu approval harus menghasilkan paling banyak satu eksekusi.
+  executedAt     DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -873,6 +885,9 @@ model Approval {
 
   @@index([status, expiresAt])
   @@index([organizationId])
+  /// Jalur panas: setiap pesan masuk dicek apakah ini balasan persetujuan.
+  @@index([chatJid, status])
+  @@index([requestedBy, status])
 }
 
 model ToolExecution {

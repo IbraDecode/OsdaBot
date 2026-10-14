@@ -7,6 +7,8 @@
  *  - substitution test (test double) mudah,
  *  - tidak ada circular import yang menyulitkan.
  */
+import { ApprovalEngine } from './approvals/engine.js'
+import { ToolApprovalExecutor } from './approvals/executor.js'
 import { AttendanceService } from './attendance/service.js'
 import { AgentRuntime } from './agent/runtime.js'
 import { OpenAiCompatibleProvider } from './agent/llm/openai-compatible.js'
@@ -27,6 +29,7 @@ const log = logger.child({ module: 'bootstrap' })
 
 export interface Application {
   prisma: typeof prisma
+  approvals: ApprovalEngine
   authorization: AuthorizationService
   identity: IdentityEngine
   attendance: AttendanceService
@@ -80,18 +83,50 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<Applica
   // --- Lapis WhatsApp -----------------------------------------------------
   const whatsapp = options.whatsappProvider ?? new BaileysProvider()
 
+  // --- Lapis persetujuan --------------------------------------------------
+  //
+  // WAJIB dipasang sebelum handler dipakai. Tanpa broker, tool yang
+  // `requiresApproval` akan ditolak — itu memang perilaku yang benar, tapi
+  // berarti fitur tidak bisa dipakai sama sekali kalau lupa dipasang.
+  const approvalExecutor = new ToolApprovalExecutor({
+    prisma,
+    tools,
+    authorization,
+    defaultTimezone: env.APP_TIMEZONE,
+  })
+
+  const approvals = new ApprovalEngine({ prisma, whatsapp, executor: approvalExecutor })
+  tools.setApprovalBroker(approvals)
+
   // --- Lapis pipeline -----------------------------------------------------
   const pipeline = new MessagePipeline({ prisma })
 
-  const handler = new MessageHandler({ pipeline, identity, agent, tools, skills, whatsapp, attendance })
+  const handler = new MessageHandler({
+    pipeline,
+    identity,
+    agent,
+    tools,
+    skills,
+    whatsapp,
+    attendance,
+    approvals,
+  })
 
   // Tool butuh akses Prisma untuk query langsung (mis. daftar anggota).
   attachPrismaToRegistry(tools, prisma)
 
   await handler.registerTools()
 
+  // Bersihkan persetujuan basi secara berkala. Expired tetap bisa dibaca untuk
+  // audit, tapi tidak lagi bisa disetujui.
+  const expiryTimer = setInterval(() => {
+    void approvals.expireStale().catch((error: unknown) => log.warn({ err: error }, 'gagal mengexpire approval'))
+  }, 60_000)
+  expiryTimer.unref()
+
   const shutdown = async (): Promise<void> => {
     log.info('mematikan aplikasi')
+    clearInterval(expiryTimer)
     try {
       await whatsapp.disconnect()
     } catch (error) {
@@ -106,6 +141,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<Applica
 
   return {
     prisma,
+    approvals,
     authorization,
     identity,
     attendance,

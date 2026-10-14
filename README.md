@@ -15,7 +15,7 @@ pnpm db:migrate && pnpm db:seed && pnpm dev
 
 | | |
 |---|---|
-| Test | **176 lulus, 0 gagal** |
+| Test | **216 lulus, 0 gagal** |
 | Tool | 15 |
 | Skill | 3 |
 | Permission | 50 |
@@ -61,7 +61,7 @@ src/
 skills/             Kemampuan berbasis Markdown
 docs/               Dokumentasi berbahasa Indonesia
 tests/
-├── unit/           Fungsi murni (141 test)
+├── unit/           Fungsi murni (190 test)
 ├── integration/    Modul nyata + PostgreSQL (35 test)
 └── live/           Provider sungguhan (10 test)
 ```

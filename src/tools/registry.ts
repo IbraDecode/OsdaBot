@@ -34,7 +34,11 @@ export interface ApprovalBroker {
    * Minta persetujuan. Mengembalikan:
    *  - 'approved' → boleh jalan
    *  - 'rejected' → ditolak pengguna
-   *  - 'pending'  → persetujuan dicatat, jalankan nanti
+   *  - 'pending'  → persetujuan dicatat, dijawab terpisah
+   *
+   * `chatJid` menentukan ke mana permintaan dikirim dan dari mana balasan
+   * diterima. Kalau kosong, permintaan dicatat tapi tidak bisa dijawab — itu
+   * lebih baik daripada diam-diam menjalankan tindakan tanpa persetujuan.
    */
   request(context: {
     actorUserId: string | null
@@ -44,6 +48,8 @@ export interface ApprovalBroker {
     actionType: string
     payload: unknown
     preview: string
+    chatJid?: string | null
+    correlationId?: string | null
   }): Promise<'approved' | 'rejected' | 'pending'>
 }
 
@@ -202,11 +208,23 @@ export class ToolRegistry {
       }
     }
 
-    // 5-6. Approval untuk tindakan berisiko.
-    if (tool.requiresApproval && tool.riskLevel === 'HIGH') {
+    // 5-6. Approval untuk tindakan yang ditandai `requiresApproval`.
+    //
+    // PENTING: syaratnya HANYA `requiresApproval` — BUKAN
+    // `requiresApproval && riskLevel === 'HIGH'`.
+    //
+    // Versi lama menambah syarat riskLevel HIGH, padahal tool seperti
+    // `whatsapp.send_message` menandai requiresApproval dengan riskLevel
+    // MEDIUM. Akibatnya approval tidak pernah diminta untuk tool yang paling
+    // butuh persetujuan: pesan yang terkirim tidak bisa ditarik kembali.
+    // Sekali dilepas, persetujuan yang keliru tidak bisa dikoreksi.
+    if (tool.requiresApproval) {
       const broker = this.deps.approvals
       if (!broker) {
-        return fail('INTERNAL_ERROR', 'Mekanisme persetujuan belum siap.')
+        // Tolak, jangan lewati. Tanpa broker, tool berisiko TIDAK BOLEH jalan.
+        this.logger.error({ tool: name, correlationId: context.correlationId }, 'tool butuh persetujuan tapi broker tidak terpasang')
+        await this.audit(context, name, input, 'denied', 'APPROVAL_UNAVAILABLE')
+        return fail('INTERNAL_ERROR', 'Mekanisme persetujuan belum siap. Tindakan ini belum bisa dijalankan.')
       }
 
       const verdict = await broker.request({
@@ -217,6 +235,8 @@ export class ToolRegistry {
         actionType: tool.name,
         payload: input,
         preview: this.previewFor(tool.name, input),
+        chatJid: context.chatJid,
+        correlationId: context.correlationId,
       })
 
       if (verdict === 'rejected') {

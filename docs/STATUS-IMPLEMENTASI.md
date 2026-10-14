@@ -115,10 +115,10 @@ Setiap perintah **membaca kondisi nyata** dari database dan provider.
 
 | Yang diukur | Nilai |
 |---|---|
-| Test unit | 141 lulus |
+| Test unit | 190 lulus |
 | Test integrasi | 35 lulus |
 | Test live | 10 lulus (dengan `RUN_LIVE_TESTS=true`) |
-| **Total** | **176 lulus, 0 gagal** |
+| **Total** | **216 lulus, 0 gagal** |
 | Tool terdaftar | 15 |
 | Skill termuat | 3 |
 | Permission | 50 |
@@ -170,6 +170,18 @@ sudah disiapkan. Implementasinya belum.
 ### Prompt versioning
 
 Prompt saat ini inline di `src/agent/prompt.ts`. Belum ada sistem versi.
+
+## Approval engine
+
+| Komponen | Status | Catatan |
+|---|---|---|
+| Gerbang persetujuan | `VERIFIED` | Bug `requiresApproval && riskLevel==='HIGH'` diperbaiki |
+| Penyimpanan approval | `VERIFIED` | Migrasi `20261014230000` + `2026101423100` terpasang |
+| Balasan setuju/batal | `VERIFIED` | Diuji langsung terhadap database |
+| Otorisasi ulang saat eksekusi | `VERIFIED` | Test regresi ada |
+| Lewat WhatsApp nyata | `NOT VERIFIED` | Pairing masih terblokir 429 |
+
+Detail: [PERSETUJUAN.md](./PERSETUJUAN.md)
 
 ## Temuan penting (pairing)
 

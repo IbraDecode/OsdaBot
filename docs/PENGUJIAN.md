@@ -52,7 +52,7 @@ const dummy = {
 }
 ```
 
-## Unit (141 test)
+## Unit (190 test)
 
 ### `tests/unit/jid.test.ts`
 
@@ -153,6 +153,39 @@ Verifikasi signature BaturPay:
 
 Test ini sengaja **menyalin** logika `getCompanionWebClientType()` dari Baileys.
 Kalau Baileys mengubah pemetaannya, test gagal — bukan diam-diam merusak pairing.
+
+### `tests/unit/approval-gate.test.ts` (6 test)
+
+Gerbang persetujuan. Termasuk **regresi keamanan**:
+
+- Tool `MEDIUM` dengan `requiresApproval: true` **harus** meminta persetujuan.
+- Broker tidak terpasang → tool **ditolak**, bukan dilewati.
+- `chatJid` dan `correlationId` diteruskan ke broker.
+- Persetujuan ditolak → `PERMISSION_DENIED`, tool tidak jalan.
+
+Sudah diverifikasi: mengembalikan gerbang ke versi lama
+(`&& riskLevel === 'HIGH'`) membuat 4 test gagal.
+
+### `tests/unit/approvals.test.ts` (27 test)
+
+Parser niat + mesin persetujuan:
+
+- `"iya"` → approve, `"batal"` → reject, `"batal semua"` → reject_all.
+- **Tidak ada substring matching**: `oktober`, `iyausername`, `stopped` → `none`.
+- **Tidak ada tebakan**: `tidak boleh kirim ke grup` → `none` (diteruskan ke agent).
+- Pesan > 40 karakter → `none`.
+- Hash payload stabil terhadap urutan kunci, berbeda untuk tipe berbeda.
+- Orang yang bukan pemohon → ditolak.
+- **Payload berubah → persetujuan dibatalkan.**
+- `updateMany` count 0 → tidak ada eksekusi kedua.
+- Approval tanpa `chatJid` → dicatat tapi tidak dikirim (tidak bisa dijawab).
+
+### `tests/unit/approval-executor.test.ts` (7 test)
+
+- Konteks eksekusi dibangun dari baris `Approval`, bukan dari argumen.
+- Izin dicabut setelah persetujuan → **tidak** dieksekusi.
+- Sudah punya `executedAt` → tidak dijalankan lagi.
+- Kegagalan tool dibungkus jadi pesan, tidak melempar keluar.
 
 ### `tests/unit/phone-config.test.ts`
 
