@@ -52,7 +52,7 @@ const dummy = {
 }
 ```
 
-## Unit (236 test)
+## Unit (258 test)
 
 ### `tests/unit/jid.test.ts`
 
@@ -153,6 +153,18 @@ Verifikasi signature BaturPay:
 
 Test ini sengaja **menyalin** logika `getCompanionWebClientType()` dari Baileys.
 Kalau Baileys mengubah pemetaannya, test gagal — bukan diam-diam merusak pairing.
+
+### `tests/unit/reminders.test.ts` (22 test)
+
+- Kunci idempotensi stabil, berbeda untuk isi/org/slot waktu berbeda.
+- Granularitas slot 1 menit (dokumentasi eksplisit, bukan asumsi).
+- Hanya satu worker bisa mengklaim satu job (`updateMany` bersyarat).
+- Pengingat >10 menit telat **dibatalkan**, bukan dikirim.
+- `fail` mengembalikan ke SCHEDULED atau menyerah sesuai `attempts`.
+- `cancel` tidak bisa membatalkan job yang sedang `RUNNING`.
+- **`status: 'failed'` tidak dihitung sukses** — kalau tidak, pengingat hilang
+  selamanya tanpa pernah sampai ke penerima.
+- Job tanpa `chatJid` dilewati, bukan dicoba.
 
 ### `tests/unit/member-onboarding.test.ts` (25 test)
 

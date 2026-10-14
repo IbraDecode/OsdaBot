@@ -17,6 +17,8 @@ import { prisma } from './database/client.js'
 import { IdentityEngine } from './identity/resolver.js'
 import { logger } from './observability/logger.js'
 import { MessageHandler } from './pipeline/message-handler.js'
+import { ReminderWorker } from './queue/reminder-worker.js'
+import { ReminderService } from './reminders/service.js'
 import { MessagePipeline } from './pipeline/message-pipeline.js'
 import { SkillRegistry } from './skills/registry.js'
 import { AuthorizationService } from './security/authorization.js'
@@ -36,6 +38,8 @@ export interface Application {
   tools: ToolRegistry
   skills: SkillRegistry
   agent: AgentRuntime
+  reminders: ReminderService
+  reminderWorker: ReminderWorker
   pipeline: MessagePipeline
   handler: MessageHandler
   whatsapp: WhatsAppProvider
@@ -47,6 +51,8 @@ export interface BootstrapOptions {
   whatsappProvider?: WhatsAppProvider
   /** Test double untuk LLM. */
   llmProvider?: ConstructorParameters<typeof AgentRuntime>[0]['llm']
+  /** Default true. CLI harus mengeset false supaya prosesnya bisa keluar. */
+  startWorkers?: boolean
   skillRoot?: string
   maxToolCalls?: number
   maxSteps?: number
@@ -101,6 +107,13 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<Applica
   // --- Lapis pipeline -----------------------------------------------------
   const pipeline = new MessagePipeline({ prisma })
 
+  // --- Lapis pengingat -----------------------------------------------------
+  //
+  // Worker dinyalakan hanya di server. Di CLI, menyalakannya akan membuat
+  // proses tidak pernah keluar.
+  const reminders = new ReminderService(prisma)
+  const reminderWorker = new ReminderWorker({ prisma, whatsapp })
+
   const handler = new MessageHandler({
     pipeline,
     identity,
@@ -110,6 +123,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<Applica
     whatsapp,
     attendance,
     approvals,
+    reminders,
   })
 
   // Tool butuh akses Prisma untuk query langsung (mis. daftar anggota).
@@ -124,9 +138,14 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<Applica
   }, 60_000)
   expiryTimer.unref()
 
+  if (options.startWorkers !== false) {
+    reminderWorker.start()
+  }
+
   const shutdown = async (): Promise<void> => {
     log.info('mematikan aplikasi')
     clearInterval(expiryTimer)
+    await reminderWorker.stop()
     try {
       await whatsapp.disconnect()
     } catch (error) {
@@ -148,6 +167,8 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<Applica
     tools,
     skills,
     agent,
+    reminders,
+    reminderWorker,
     pipeline,
     handler,
     whatsapp,

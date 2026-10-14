@@ -15,6 +15,7 @@ diperbarui di perubahan yang sama.
 | [AGENT.md](./AGENT.md) | Agent Runtime, tool loop, batas, prompt |
 | [TOOLS.md](./TOOLS.md) | Tool Registry, kontrak, standar membuat tool |
 | [SKILLS.md](./SKILLS.md) | Format SKILL.md & registry |
+| [PENGINGAT.md](./PENGINGAT.md) | Worker pengingat, idempotensi, keputusan lifecycle |
 | [PROVISIONING.md](./PROVISIONING.md) | Cara menyiapkan organisasi nyata + linking nomor admin |
 | [PERSETUJUAN.md](./PERSETUJUAN.md) | Approval engine, alur persetujuan, garis keamanannya |
 | [KEAMANAN.md](./KEAMANAN.md) | RBAC, otorisasi, batas keamanan |

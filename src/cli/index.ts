@@ -16,6 +16,9 @@
  *   pnpm osda org:show          — detail organisasi (anggota, nomor, peran)
  *   pnpm osda org:add-member    — tambah satu anggota
  *   pnpm osda org:import-members— impor massal dari teks/berkas
+ *   pnpm osda reminder:list     — daftar pengingat terjadwal
+ *   pnpm osda reminder:cancel   — batalkan semua pengingat
+ *   pnpm osda reminder:tick     — jalankan worker sekali
  *   pnpm osda db:seed           — isi data contoh
  */
 
@@ -29,6 +32,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { OrganizationProvisioner } from '../organization/provisioning.js'
 import { MemberProvisioner } from '../organization/member-onboarding.js'
+import { ReminderService } from '../reminders/service.js'
 import { MessageHandler } from '../pipeline/message-handler.js'
 
 const log = logger.child({ module: 'cli' })
@@ -94,7 +98,7 @@ register('status', 'Tampilkan status komponen OSDABOT', async () => {
   const db = await checkDatabaseHealth()
   const sessionFiles = await listSessionFiles(env.WHATSAPP_SESSION_DIR)
 
-  const app = await bootstrap()
+  const app = await bootstrap({ startWorkers: false })
   box('OSDABOT — STATUS', [
     `Environment      : ${env.NODE_ENV}`,
     `Zona waktu       : ${env.APP_TIMEZONE}`,
@@ -478,6 +482,86 @@ register('org:import-members', 'Impor banyak anggota dari teks atau berkas', asy
     for (const item of results.filter((r) => r.status === 'skipped').slice(0, 10)) {
       console.log(`    - ${item.fullName}: ${item.reason}`)
     }
+  }
+
+  await prisma.$disconnect()
+})
+
+register('reminder:list', 'Daftar pengingat terjadwal', async () => {
+  const args = parseArgs(process.argv.slice(3))
+  const slug = args.slug
+
+  if (!slug) {
+    console.error('Pakai --slug=...')
+    await prisma.$disconnect()
+    process.exit(1)
+  }
+
+  const org = await prisma.organization.findUnique({ where: { slug }, select: { id: true, name: true } })
+  if (!org) {
+    console.error(`Organisasi "${slug}" tidak ditemukan.`)
+    await prisma.$disconnect()
+    process.exit(1)
+  }
+
+  const service = new ReminderService(prisma as never)
+  const daftar = await service.listActive(org.id)
+
+  box(`PENGINGAT — ${org.name} (${daftar.length})`, [
+    ...daftar.map((item) => {
+      const kapan = item.scheduledAt.toISOString().replace('T', ' ').slice(0, 16)
+      return `${kapan} | ${item.title}\n    ${item.body}`
+    }),
+    ...(daftar.length === 0 ? ['(tidak ada pengingat terjadwal)'] : []),
+  ])
+  await prisma.$disconnect()
+})
+
+register('reminder:cancel', 'Batalkan semua pengingat terjadwal di organisasi', async () => {
+  const args = parseArgs(process.argv.slice(3))
+  const slug = args.slug
+
+  if (!slug) {
+    console.error('Pakai --slug=...')
+    await prisma.$disconnect()
+    process.exit(1)
+  }
+
+  const org = await prisma.organization.findUnique({ where: { slug }, select: { id: true, name: true } })
+  if (!org) {
+    console.error(`Organisasi "${slug}" tidak ditemukan.`)
+    await prisma.$disconnect()
+    process.exit(1)
+  }
+
+  const service = new ReminderService(prisma as never)
+  const jumlah = await service.cancelAll(org.id)
+
+  console.log(`\n${jumlah} pengingat dibatalkan di "${org.name}".`)
+  await prisma.$disconnect()
+})
+
+register('reminder:tick', 'Jalankan satu siklus worker pengingat sekarang', async () => {
+  const { ReminderWorker } = await import('../queue/reminder-worker.js')
+  const { BaileysProvider } = await import('../whatsapp/baileys-provider.js')
+
+  const whatsapp = new BaileysProvider()
+  const worker = new ReminderWorker({ prisma: prisma as never, whatsapp })
+
+  console.log('Menjalankan satu siklus worker pengingat...\n')
+  try {
+    const hasil = await worker.tick()
+    console.log(`  Dikirim     : ${hasil.dikirim}`)
+    console.log(`  Gagal       : ${hasil.gagal}`)
+    console.log(`  Dilewati    : ${hasil.dilewati}`)
+    console.log('')
+    if (hasil.dikirim === 0 && hasil.gagal === 0) {
+      console.log('  Tidak ada pengingat yang jatuh tempo.')
+    }
+  } catch (error) {
+    console.error('  Siklus gagal:', error instanceof Error ? error.message : error)
+    await prisma.$disconnect()
+    process.exit(1)
   }
 
   await prisma.$disconnect()

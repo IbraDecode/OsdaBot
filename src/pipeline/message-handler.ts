@@ -8,6 +8,7 @@
 import { randomUUID } from 'node:crypto'
 import type { AgentRuntime } from '../agent/runtime.js'
 import type { ApprovalEngine } from '../approvals/engine.js'
+import type { ReminderService } from '../reminders/service.js'
 import type { AttendanceService } from '../attendance/service.js'
 import { env } from '../config/env.js'
 import type { IdentityEngine } from '../identity/resolver.js'
@@ -49,6 +50,11 @@ export interface MessageHandlerDeps {
    * dan tindakan yang disetujui tidak pernah dijalankan.
    */
   approvals: ApprovalEngine
+  /**
+   * Layanan pengingat. Wajib ada supaya tool jadwal bisa mendaftarkan
+   * pengingat.
+   */
+  reminders: ReminderService
   /** Versi aplikasi untuk log. */
   version?: string
 }
