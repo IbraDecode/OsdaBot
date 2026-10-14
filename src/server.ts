@@ -1,0 +1,170 @@
+/**
+ * Server HTTP (Fastify).
+ *
+ * Endpoint yang ada HANYA yang benar-benar dibutuhkan operasional:
+ *  - `GET /health`  — liveness (apakah proses hidup).
+ *  - `GET /ready`   — readiness (apakah dependency siap menerima pekerjaan).
+ *  - `POST /webhooks/baturpay` — penerimaan notifikasi pembayaran.
+ *
+ * Tidak ada dashboard web. Terminal + WhatsApp adalah antarmuka utamanya,
+ * sesuai keputusan arsitektur.
+ *
+ * CATATAN KEAMANAN: endpoint webhook butuh verifikasi HMAC. Tanpa itu, siapa pun
+ * bisa mengirim "pembayaran sukses" palsu dan menandai transaksi lunas.
+ */
+import { createHmac, timingSafeEqual } from 'node:crypto'
+import Fastify, { type FastifyInstance } from 'fastify'
+import { env } from './config/env.js'
+import { logger } from './observability/logger.js'
+import type { Application } from './bootstrap.js'
+import { handleBaturPayWebhook } from './payments/baturpay.js'
+
+const log = logger.child({ module: 'server' })
+
+/** Request yang menyimpan raw body untuk verifikasi signature webhook. */
+interface FastifyRequestWithRawBody {
+  rawBody?: Buffer
+}
+
+export async function createServer(app: Application): Promise<FastifyInstance> {
+  const server = Fastify({
+    logger: false,
+    bodyLimit: env.SERVER_BODY_LIMIT_BYTES,
+    trustProxy: true,
+  })
+
+  // --- Health ---------------------------------------------------------------
+
+  server.get('/health', async () => ({
+    status: 'ok',
+    uptimeSeconds: Math.round(process.uptime()),
+  }))
+
+  server.get('/ready', async (_request, reply) => {
+    const checks = await runReadinessChecks(app)
+    const ready = checks.every((check) => check.ok)
+
+    return reply.code(ready ? 200 : 503).send({
+      status: ready ? 'ready' : 'not_ready',
+      checks,
+    })
+  })
+
+  // --- Webhook pembayaran ---------------------------------------------------
+
+  server.post('/webhooks/baturpay', async (request, reply) => {
+    if (!env.BATURPAY_WEBHOOK_SECRET) {
+      log.warn('webhook BaturPay dipanggil tanpa secret terkonfigurasi')
+      return reply.code(503).send({ ok: false, error: 'WEBHOOK_NOT_CONFIGURED' })
+    }
+
+    // Verifikasi signature WAJIB memakai RAW BODY. Kalau body di-parse dulu lalu
+    // di-serialize ulang, byte-nya bisa berbeda dan HMAC gagal (atau, lebih
+    // buruk, lolos karena encoding berbeda).
+    const rawBody =
+      (request as FastifyRequestWithRawBody).rawBody ?? Buffer.from(JSON.stringify(request.body ?? {}))
+    const signature = request.headers['x-baturpay-signature']
+    const timestamp = request.headers['x-baturpay-timestamp']
+
+    const verified =
+      typeof signature === 'string' &&
+      typeof timestamp === 'string' &&
+      verifyBaturPaySignature(rawBody, timestamp, signature, env.BATURPAY_WEBHOOK_SECRET)
+
+    if (!verified) {
+      log.warn('webhook BaturPay ditolak: signature tidak cocok')
+      return reply.code(401).send({ ok: false, error: 'INVALID_SIGNATURE' })
+    }
+
+    try {
+      const result = await handleBaturPayWebhook(request.body as Record<string, unknown>, rawBody)
+      return reply.code(result.accepted ? 200 : 202).send({ ok: true, ...result })
+    } catch (error) {
+      log.error({ err: error }, 'gagal memproses webhook BaturPay')
+      return reply.code(500).send({ ok: false, error: 'INTERNAL_ERROR' })
+    }
+  })
+
+  // --- Raw body capture ----------------------------------------------------
+
+  server.addContentTypeParser('application/json', { parseAs: 'buffer' }, (request, body, done) => {
+    const buffer = body as Buffer
+    // Simpan RAW BYTE di request. Verifikasi HMAC webhook MEMBUTUHKAN byte
+    // persis seperti yang dikirim — kalau di-parse lalu di-serialize ulang,
+    // hash-nya bisa berbeda dan signature tidak akan cocok.
+    ;(request as FastifyRequestWithRawBody).rawBody = buffer
+    try {
+      done(null, buffer.length === 0 ? {} : JSON.parse(buffer.toString('utf8')))
+    } catch (error) {
+      const err = error as Error & { statusCode?: number }
+      err.statusCode = 400
+      done(err, undefined)
+    }
+  })
+
+  await server.listen({ host: env.SERVER_HOST, port: env.SERVER_PORT })
+
+  log.info({ host: env.SERVER_HOST, port: env.SERVER_PORT }, 'server HTTP berjalan')
+  return server
+}
+
+export interface ReadinessCheck {
+  name: string
+  ok: boolean
+  latencyMs?: number
+  detail?: string
+}
+
+export async function runReadinessChecks(app: Application): Promise<ReadinessCheck[]> {
+  const checks: ReadinessCheck[] = []
+
+  const mulaiDb = Date.now()
+  try {
+    await app.prisma.$queryRaw`SELECT 1`
+    checks.push({ name: 'postgresql', ok: true, latencyMs: Date.now() - mulaiDb })
+  } catch (error) {
+    checks.push({
+      name: 'postgresql',
+      ok: false,
+      latencyMs: Date.now() - mulaiDb,
+      detail: error instanceof Error ? error.message : String(error),
+    })
+  }
+
+  const status = app.whatsapp.getStatus()
+  // WhatsApp tidak "ok" kalau butuh auth ulang — tapi itu bukan kegagalan proses.
+  checks.push({
+    name: 'whatsapp',
+    ok: status.state === 'connected' || status.state === 'connecting' || status.state === 'reconnecting',
+    detail: `${status.state}${status.reason ? `: ${status.reason}` : ''}`,
+  })
+
+  checks.push({ name: 'tools', ok: app.tools.names().length > 0, detail: `${app.tools.names().length} tool` })
+  checks.push({ name: 'skills', ok: app.skills.size() >= 0, detail: `${app.skills.size()} skill` })
+
+  return checks
+}
+
+/**
+ * Verifikasi HMAC BaturPay.
+ *
+ * Format (dari dokumentasi resmi BaturPay):
+ *   expected = hex(HMAC-SHA256(timestamp + "." + rawBody, secret))
+ *   Bandingkan dengan `timingSafeEqual`.
+ *
+ * Perbandingan harus timing-safe supaya tidak bisa dikira tebak-tebakan.
+ */
+export function verifyBaturPaySignature(
+  rawBody: Buffer,
+  timestamp: string,
+  signature: string,
+  secret: string,
+): boolean {
+  const expected = createHmac('sha256', secret).update(Buffer.concat([Buffer.from(`${timestamp}.`), rawBody])).digest('hex')
+
+  const provided = Buffer.from(signature, 'hex')
+  const computed = Buffer.from(expected, 'hex')
+
+  if (provided.length !== computed.length) return false
+  return timingSafeEqual(provided, computed)
+}

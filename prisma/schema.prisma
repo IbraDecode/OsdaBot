@@ -1,0 +1,1142 @@
+// =============================================================================
+// OSDABOT — Prisma Schema
+// =============================================================================
+//
+// ATURAN MUTLAK SCHEMA INI:
+// 1. Primary key SELALU UUID internal. Nama anggota / nomor WhatsApp JID TIDAK
+//    boleh jadi primary key maupun identitas unik lintas organisasi.
+// 2. Semua data milik organisasi WAJIB punya `organizationId` yang NotNull
+//    (kecuali data global). Ini dasar isolasi multi-tenant.
+// 3. Nominal uang SELALU integer Rupiah (tanpa sen). Tidak ada Float untuk uang.
+// 4. Perubahan schema WAJIB lewat migrasi Prisma, tidak boleh `db push` ke prod.
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// ENUM
+// =============================================================================
+
+enum GroupActivationPolicy {
+  /// Bot hanya merespons jika di-mention, dibalas, atau dipanggil pakai nama.
+  MENTION_OR_REPLY
+  /// Bot merespons SEMUA pesan di grup. Hati-hati — boros token & mengganggu.
+  ALL_MESSAGES
+  /// Bot tidak pernah merespons otomatis di grup ini.
+  OFF
+}
+
+enum AttendanceStatus {
+  PRESENT
+  EXCUSED
+  SICK
+  ABSENT
+  UNCONFIRMED
+  PENDING
+}
+
+enum ResourceRiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
+enum AgentTaskStatus {
+  PENDING
+  PLANNING
+  AWAITING_APPROVAL
+  RUNNING
+  WAITING
+  COMPLETED
+  PARTIALLY_COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum MemoryCategory {
+  CONVERSATION
+  PREFERENCE
+  ORGANIZATION_KNOWLEDGE
+  OPERATIONAL_REFERENCE
+}
+
+enum MemoryScope {
+  USER
+  ORGANIZATION
+  CONVERSATION
+}
+
+enum ScheduledJobStatus {
+  SCHEDULED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  DRAFT
+  PENDING
+  SETTLED
+  FAILED
+  EXPIRED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentProviderName {
+  BATURPAY
+  MOCK
+  MANUAL
+}
+
+enum SignalStatus {
+  ACTIVE
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+enum SignalSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum SkillStatus {
+  DRAFT
+  ACTIVE
+  DISABLED
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENDING
+  PROVIDER_ACCEPTED
+  DELIVERED
+  FAILED
+  /// Hasil pengiriman tidak diketahui (mis. timeout lalu proses mati).
+  /// WAJIB direkonsiliasi sebelum retry — jangan diasumsikan gagal.
+  UNKNOWN
+}
+
+// =============================================================================
+// ORGANISASI & IDENTITAS
+// =============================================================================
+
+model Organization {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String   @unique
+  timezone  String   @default("Asia/Makassar")
+  locale    String   @default("id")
+  /// JSON: pengaturan organisasi (groupActivation default, requireApprovalForBulk, dll)
+  settings  Json     @default("{}")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members          OrganizationMember[]
+  roles            OrganizationRole[]
+  groups           Group[]
+  events           Event[]
+  attendanceEvents AttendanceEvent[]
+  conversations    Conversation[]
+  tasks            Task[]
+  financeAccounts  FinanceAccount[]
+  invoices         Invoice[]
+  payments         Payment[]
+  documents        DocumentRecord[]
+  knowledgeDocs    KnowledgeDocument[]
+  memories         Memory[]
+  jobs             ScheduledJob[]
+  workflows        Workflow[]
+  auditLogs        AuditLog[]
+  monitoringConfigs MonitoringConfiguration[]
+  recommendations  Recommendation[]
+  toolExecutions   ToolExecution[]
+  approvals        Approval[]
+  agentTasks       AgentTask[]
+  signals          OrganizationSignal[]
+  settingsRecords  OrganizationSetting[]
+
+  @@index([isActive])
+}
+
+model User {
+  /// Identitas internal. Tidak pernah sama dengan nomor telepon.
+  id          String    @id @default(uuid()) @db.Uuid
+  displayName String?
+  /// Identitas WhatsApp milik user ini (bisa banyak: nomor + LID).
+  identities  WhatsAppIdentity[]
+  /// Keanggotaan di berbagai organisasi. Izin dihitung per organisasi.
+  memberships OrganizationMember[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model WhatsAppIdentity {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String? @db.Uuid
+
+  /// JID bentuk PN: "6281234567890@s.whatsapp.net" — unique.
+  pnJid String? @unique
+  /// JID bentuk LID: "123456789012345@lid" — unique. WhatsApp kini memakai
+  /// LID untuk privasi; nomor asli bisa disembunyikan.
+  lidJid String? @unique
+
+  /// Nomor HP ternormalisasi (tanpa +, tanpa spasi) bila diketahui.
+  phoneNumber String?
+  pushName    String?
+
+  /// null = belum diverifikasi.-backend TIDAK BOLEH menganggap terverifikasi
+  /// hanya karena orang mengaku punya nama tertentu di chat.
+  verifiedAt        DateTime?
+  verificationMethod String?
+  isBot              Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user        User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
+  memberLinks MemberIdentityLink[]
+  messages    Message[]             @relation("SenderIdentity")
+
+  @@index([userId])
+  @@index([phoneNumber])
+}
+
+model OrganizationMember {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  userId         String?  @db.Uuid
+
+  fullName   String
+  /// Kelas / rombongan, misal "X AKL 3". Dipakai untuk tampilan daftar hadir.
+  className  String?
+  /// Nama panggilan yang dipakai dalam chat.
+  nickname   String?
+  /// Alias tambahan untuk resolusi nama.
+  aliases    MemberAlias[]
+  /// Nama dinormalisasi (huruf kecil, tanpa gelar/spasi berlebih) untuk pencarian.
+  searchName String
+
+  isActive  Boolean  @default(true)
+  joinedAt  DateTime @default(now())
+  leftAt    DateTime?
+  notes     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization     Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user             User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  roleBindings     MemberRoleBinding[]
+  identityLinks    MemberIdentityLink[]
+  attendanceEntries AttendanceEntry[]
+  taskAssignments  TaskAssignment[]
+  invoices         Invoice[]
+  payments         Payment[]
+  groupMembers     GroupMembership[]
+
+  @@index([organizationId, isActive])
+  @@index([organizationId, searchName])
+  @@index([userId])
+}
+
+model MemberAlias {
+  id       String             @id @default(uuid()) @db.Uuid
+  memberId String             @db.Uuid
+  alias    String
+  member   OrganizationMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@index([memberId])
+}
+
+/// Penghubung anggota <-> identitas WhatsApp. Hanya baris yang SUDAH diverifikasi
+/// yang boleh dipakai untuk mention otomatis.
+model MemberIdentityLink {
+  id             String             @id @default(uuid()) @db.Uuid
+  memberId       String             @db.Uuid
+  identityId     String             @db.Uuid
+  organizationId String             @db.Uuid
+  verifiedAt     DateTime?
+  verifiedBy     String?            @db.Uuid
+  /// null = belum diverifikasi. Mention hanya boleh untuk link terverifikasi.
+  method         String?
+
+  createdAt DateTime @default(now())
+
+  member   OrganizationMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  identity WhatsAppIdentity  @relation(fields: [identityId], references: [id], onDelete: Cascade)
+
+  @@unique([memberId, identityId])
+  @@index([organizationId])
+}
+
+model OrganizationRole {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  key            String
+  name           String
+  description    String?
+  /// System roles tidak boleh dihapus / diubah.
+  isSystem       Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  permissions   RolePermission[]
+  memberBindings MemberRoleBinding[]
+
+  @@unique([organizationId, key])
+}
+
+model Permission {
+  key         String  @id
+  group       String
+  description String?
+
+  roles RolePermission[]
+
+  @@index([group])
+}
+
+model RolePermission {
+  roleId       String           @db.Uuid
+  permissionId String
+  role         OrganizationRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission       @relation(fields: [permissionId], references: [key], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model MemberRoleBinding {
+  id        String             @id @default(uuid()) @db.Uuid
+  memberId  String             @db.Uuid
+  roleId    String             @db.Uuid
+  createdAt DateTime           @default(now())
+
+  member OrganizationMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  role   OrganizationRole   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([memberId, roleId])
+}
+
+// =============================================================================
+// WHATSAPP
+// =============================================================================
+
+model Group {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  /// JID grup: "123456789-123456@g.us". Unik global (1 grup = 1 organisasi).
+  jid           String   @unique
+  subject        String?
+  /// Tujuan grup dalam organisasi, mis. "Panitia LKBB".
+  purpose        String?
+  activation    GroupActivationPolicy @default(MENTION_OR_REPLY)
+  /// JSON: notifikasi, batas laju, dll.
+  settings      Json     @default("{}")
+  isArchived    Boolean  @default(false)
+  linkedAt      DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  memberships  GroupMembership[]
+
+  @@index([organizationId])
+}
+
+model GroupMembership {
+  id        String   @id @default(uuid()) @db.Uuid
+  groupId   String   @db.Uuid
+  memberId  String   @db.Uuid
+  /// Peran di grup (mis. admin), BUKAN wewenang organisasi.
+  isGroupAdmin Boolean @default(false)
+  joinedAt  DateTime @default(now())
+
+  group  Group             @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  member OrganizationMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, memberId])
+  @@index([memberId])
+}
+
+model Conversation {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String?  @db.Uuid
+  /// JID chat: PN untuk private, @gus untuk grup.
+  chatJid        String
+  chatType       String
+  /// Nama grup / nama kontak, cache tampilan.
+  title          String?
+  lastMessageAt  DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  messages     Message[]
+  activeTasks  ActiveTask[]
+  memories     Memory[]
+
+  @@unique([chatJid])
+  @@index([organizationId])
+}
+
+model Message {
+  id             String   @id @default(uuid()) @db.Uuid
+  conversationId String   @db.Uuid
+  /// Hash dari accountId + waMessageId. UNIQUE = proteksi dedupe event masuk.
+  dedupeKey      String   @unique
+  waMessageId    String
+  senderIdentityId String? @db.Uuid
+  senderJid      String
+  direction      String
+  type           String
+  text           String?
+  quotedWaId     String?
+  mentionedJids  String[] @default([])
+  timestamp      DateTime
+  payload        Json     @default("{}")
+
+  createdAt DateTime @default(now())
+
+  conversation     Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderIdentity   WhatsAppIdentity?   @relation("SenderIdentity", fields: [senderIdentityId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId, timestamp])
+  @@index([waMessageId])
+}
+
+/// Kunci idempotensi global untuk mencegah mutasi ganda (create/update/payment).
+model IdempotencyKey {
+  key          String   @id
+  operation    String
+  status       String   @default("IN_PROGRESS")
+  responseHash String?
+  createdAt    DateTime @default(now())
+  completedAt  DateTime?
+
+  @@index([status])
+}
+
+// =============================================================================
+// CONTEXT & MEMORY
+// =============================================================================
+
+///-pointer ke pekerjaan yang sedang berjalan dalam percakapan.
+/// Inilah yang membuat "tambahin Danya" → "dia izin" bisa nyambung.
+model ActiveTask {
+  id             String   @id @default(uuid()) @db.Uuid
+  conversationId String   @db.Uuid
+  organizationId String?  @db.Uuid
+  /// Aktor yang memulai — mencegah orang lain ikut menggeser konteks.
+  actorUserId    String?  @db.Uuid
+
+  kind           String
+  status         String   @default("collecting_information")
+  /// JSON: field yang sudah terkumpul, referensi terakhir, target terakhir.
+  state          Json     @default("{}")
+  /// Penanda subjek terakhir yang dibahas — dasar untuk referensi "dia"/"yang tadi".
+  lastSubject    Json?
+  expiresAt      DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, status])
+  @@index([expiresAt])
+}
+
+model Memory {
+  id             String          @id @default(uuid()) @db.Uuid
+  category       MemoryCategory
+  scope          MemoryScope
+  organizationId String?         @db.Uuid
+  userId         String?         @db.Uuid
+  conversationId String?         @db.Uuid
+
+  content      String
+  source       String
+  confidence   Float?
+  metadata     Json      @default("{}")
+  expiresAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([category, scope])
+  @@index([organizationId])
+  @@index([userId])
+}
+
+// =============================================================================
+// EVENT & KEHADIRAN
+// =============================================================================
+
+model Event {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  title          String
+  description    String?
+  location       String?
+  startsAt       DateTime?
+  endsAt         DateTime?
+  status         String   @default("planned")
+  /// JSON: panitia, kebutuhan, checklist.
+  metadata       Json     @default("{}")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  attendanceEvents AttendanceEvent[]
+  tasks            Task[]
+
+  @@index([organizationId, startsAt])
+}
+
+model AttendanceEvent {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  eventId        String?  @db.Uuid
+
+  title       String
+  eventDate   DateTime
+  location    String?
+  status      String   @default("planned")
+
+  /// Snapshot format asli dari pengguna agar "jangan ubah formatnya" dihormati.
+  /// Renderer memakai ini sebagai kerangka, bukan membuat gaya sendiri.
+  markdownTemplate String?
+  /// JSON: gaya penomoran, heading, dll hasil deteksi format.
+  formatHints      Json     @default("{}")
+  notes            String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  event        Event?             @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  entries      AttendanceEntry[]
+
+  @@index([organizationId, eventDate])
+}
+
+model AttendanceEntry {
+  id               String @id @default(uuid()) @db.Uuid
+  attendanceEventId String @db.Uuid
+  /// NULL bila anggota belum terdaftar di master — tetap boleh masuk sebagai teks.
+  memberId         String? @db.Uuid
+  /// Nama yang ditampilkan. Diisi dari master bila memberId ada.
+  displayName      String
+  className        String?
+
+  status  AttendanceStatus @default(UNCONFIRMED)
+  reason  String?
+  notes   String?
+  /// Urutan tampil; bukan identitas.
+  sortOrder Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  attendanceEvent AttendanceEvent   @relation(fields: [attendanceEventId], references: [id], onDelete: Cascade)
+  member          OrganizationMember? @relation(fields: [memberId], references: [id], onDelete: SetNull)
+
+  /// Mencegah anggota yang sama masuk dua kali di satu acara.
+  @@unique([attendanceEventId, memberId])
+  @@index([attendanceEventId, status])
+}
+
+// =============================================================================
+// TUGAS
+// =============================================================================
+
+model Task {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  eventId        String?  @db.Uuid
+  title          String
+  description    String?
+  status         String   @default("todo")
+  priority       Int      @default(3)
+  dueAt          DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  event        Event?            @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  assignments   TaskAssignment[]
+  dependencies  TaskDependency[]  @relation("TaskDependencies")
+  dependents    TaskDependency[]  @relation("TaskDependents")
+
+  @@index([organizationId, status])
+  @@index([dueAt])
+}
+
+model TaskAssignment {
+  id        String   @id @default(uuid()) @db.Uuid
+  taskId    String   @db.Uuid
+  memberId  String   @db.Uuid
+  role      String?
+  status    String   @default("assigned")
+  createdAt DateTime @default(now())
+
+  task   Task              @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  member OrganizationMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, memberId])
+}
+
+model TaskDependency {
+  id               String   @id @default(uuid()) @db.Uuid
+  taskId           String   @db.Uuid
+  dependsOnTaskId  String   @db.Uuid
+  createdAt        DateTime @default(now())
+
+  task      Task @relation("TaskDependencies", fields: [taskId], references: [id], onDelete: Cascade)
+  dependsOn Task @relation("TaskDependents", fields: [dependsOnTaskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, dependsOnTaskId])
+}
+
+// =============================================================================
+// KEUANGAN & PEMBAYARAN
+// =============================================================================
+
+model FinanceAccount {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  name           String
+  ///rupiah integer. Tidak ada Float untuk uang.
+  balance        Int      @default(0)
+  currency       String   @default("IDR")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  entries      CashbookEntry[]
+  payments     Payment[]
+
+  @@index([organizationId])
+}
+
+model CashbookEntry {
+  id               String   @id @default(uuid()) @db.Uuid
+  financeAccountId String   @db.Uuid
+  type             String
+  amount           Int
+  description      String?
+  reference        String?
+  occurredAt       DateTime @default(now())
+  createdBy        String?  @db.Uuid
+  createdAt        DateTime @default(now())
+
+  financeAccount FinanceAccount @relation(fields: [financeAccountId], references: [id], onDelete: Cascade)
+
+  @@index([financeAccountId, occurredAt])
+}
+
+model Invoice {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  memberId       String?  @db.Uuid
+  number         String
+  title          String
+  totalAmount    Int
+  paidAmount     Int      @default(0)
+  status         String   @default("unpaid")
+  dueAt          DateTime?
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  member       OrganizationMember? @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  items        InvoiceItem[]
+  payments     Payment[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, status])
+}
+
+model InvoiceItem {
+  id          String  @id @default(uuid()) @db.Uuid
+  invoiceId   String  @db.Uuid
+  description String
+  quantity    Int     @default(1)
+  unitAmount  Int
+  amount      Int
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+}
+
+model Payment {
+  id                String              @id @default(uuid()) @db.Uuid
+  organizationId    String              @db.Uuid
+  invoiceId         String?             @db.Uuid
+  memberId          String?             @db.Uuid
+  financeAccountId  String?             @db.Uuid
+  provider          PaymentProviderName @default(MANUAL)
+  providerReference String?
+  amount            Int
+  currency          String              @default("IDR")
+  status            PaymentStatus       @default(PENDING)
+  /// Selalu diverifikasi dari provider. Klaim chat TIDAK BOLEH mengubah ini.
+  verifiedAt        DateTime?
+  metadata          Json                @default("{}")
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  organization   Organization?      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoice        Invoice?           @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  member         OrganizationMember? @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  financeAccount FinanceAccount?    @relation(fields: [financeAccountId], references: [id], onDelete: SetNull)
+  transactions   PaymentTransaction[]
+
+  @@unique([provider, providerReference])
+  @@index([organizationId, status])
+}
+
+/// Riwayat status dari provider. Menyerap webhook duplikat tanpa efek ganda.
+model PaymentTransaction {
+  id          String        @id @default(uuid()) @db.Uuid
+  paymentId   String        @db.Uuid
+  provider    PaymentProviderName
+  status      PaymentStatus
+  providerEventId String?
+  rawPayload  Json          @default("{}")
+  occurredAt  DateTime      @default(now())
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerEventId])
+  @@index([paymentId])
+}
+
+// =============================================================================
+// DOKUMEN & PENGETAHUAN
+// =============================================================================
+
+model DocumentRecord {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  title          String
+  documentType   String
+  format         String
+  storageKey     String?
+  mimeType       String?
+  sizeBytes      Int?
+  content        String?
+  status         String   @default("draft")
+  sourceTaskId   String?  @db.Uuid
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, documentType])
+}
+
+model KnowledgeDocument {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  title          String
+  documentType   String
+  source         String
+  content        String
+  /// PostgreSQL full-text search vector (diolah manual / trigger).
+  searchVector   Unsupported("tsvector")?
+  status         String   @default("verified")
+  validFrom      DateTime?
+  validUntil     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  chunks       KnowledgeChunk[]
+
+  @@index([organizationId])
+}
+
+model KnowledgeChunk {
+  id          String   @id @default(uuid()) @db.Uuid
+  documentId  String   @db.Uuid
+  ordinal     Int
+  content     String
+  /// Offset karakter di dokumen asal — dipakai untuk atribusi sumber.
+  startOffset Int
+  endOffset   Int
+
+  document KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, ordinal])
+}
+
+// =============================================================================
+// AGENT, APPROVAL, AUDIT
+// =============================================================================
+
+model AgentTask {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String?         @db.Uuid
+  conversationId String?         @db.Uuid
+  actorUserId    String?         @db.Uuid
+
+  title        String
+  kind         String
+  status       AgentTaskStatus @default(PENDING)
+  currentStep  Int             @default(0)
+  totalSteps   Int             @default(0)
+  /// JSON: rencana, hasil antar-step, konteks eksekusi.
+  state        Json            @default("{}")
+  goal         String?
+  error        String?
+  errorCode    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  endedAt   DateTime?
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  steps       AgentStep[]
+  executions  ToolExecution[]
+
+  @@index([organizationId, status])
+  @@index([status])
+}
+
+model AgentStep {
+  id        String   @id @default(uuid()) @db.Uuid
+  taskId    String   @db.Uuid
+  ordinal   Int
+  description String
+  toolName  String?
+  status    String   @default("pending")
+  dependsOn String[] @default([])
+  requiresApproval Boolean @default(false)
+  result    Json?
+  error     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  task AgentTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, ordinal])
+}
+
+model Approval {
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String?        @db.Uuid
+  taskId         String?        @db.Uuid
+  requestedBy    String?        @db.Uuid
+  requiredPermission String
+  actionType     String
+  /// Hash payload — persetujuan TIDAK BERLAKU kalau isi payload berubah.
+  payloadHash    String
+  payloadPreview String?
+  status         ApprovalStatus @default(PENDING)
+  expiresAt      DateTime
+  resolvedAt     DateTime?
+  resolvedBy     String?        @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([status, expiresAt])
+  @@index([organizationId])
+}
+
+model ToolExecution {
+  id             String   @id @default(uuid()) @db.Uuid
+  toolName       String
+  organizationId String?  @db.Uuid
+  actorUserId    String?  @db.Uuid
+  taskId         String?  @db.Uuid
+  correlationId  String
+  inputSummary   Json     @default("{}")
+  outputSummary  Json     @default("{}")
+  outcome        String
+  errorCode      String?
+  durationMs     Int?
+  createdAt      DateTime @default(now())
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  task         AgentTask?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([correlationId])
+  @@index([toolName, outcome])
+}
+
+model AuditLog {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String?  @db.Uuid
+  actorUserId    String?  @db.Uuid
+  action         String
+  resourceType   String
+  resourceId     String?
+  outcome        String
+  reasonCode     String?
+  correlationId  String?
+  /// Metadata minimal. JANGAN simpan isi chat / kredensial di sini.
+  metadata       Json     @default("{}")
+
+  createdAt DateTime @default(now())
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([action, outcome])
+}
+
+model OrganizationSetting {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  key            String
+  value          Json
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, key])
+}
+
+// =============================================================================
+// AUTOMATION
+// =============================================================================
+
+model ScheduledJob {
+  id             String            @id @default(uuid()) @db.Uuid
+  organizationId String?           @db.Uuid
+  actorUserId    String?           @db.Uuid
+  workflowId     String?           @db.Uuid
+
+  type        String
+  payload     Json     @default("{}")
+  /// Kunci idempotensi: mencegah job sama dijalankan dua kali.
+  idempotencyKey String? @unique
+  status      ScheduledJobStatus @default(SCHEDULED)
+  scheduledAt DateTime
+  startedAt   DateTime?
+  completedAt DateTime?
+  attempts    Int      @default(0)
+  lastError   String?
+  result      Json     @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workflow     Workflow?      @relation(fields: [workflowId], references: [id], onDelete: SetNull)
+
+  @@index([status, scheduledAt])
+  @@index([organizationId])
+}
+
+model Workflow {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  ownerUserId    String?  @db.Uuid
+  name           String
+  description    String?
+  /// JSON: trigger, conditions, actions. BUKAN kode bebas.
+  trigger        Json
+  conditions     Json     @default("{}")
+  actions        Json     @default("{}")
+  status         String   @default("draft")
+  cronExpression String?
+  timezone       String   @default("Asia/Makassar")
+  lastRunAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  jobs         ScheduledJob[]
+  runs         WorkflowRun[]
+
+  @@index([organizationId, status])
+}
+
+model WorkflowRun {
+  id         String   @id @default(uuid()) @db.Uuid
+  workflowId String   @db.Uuid
+  status     String   @default("running")
+  startedAt  DateTime @default(now())
+  endedAt    DateTime?
+  result     Json     @default("{}")
+
+  workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@index([workflowId, startedAt])
+}
+
+/// Outbox: mutasi DB dan pengiriman pesan dikoordinasikan lewat satu transaksi.
+model OutboxEvent {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String?         @db.Uuid
+  topic          String
+  payload        Json
+  status         DeliveryStatus  @default(PENDING)
+  attempts       Int             @default(0)
+  availableAt    DateTime        @default(now())
+  processedAt    DateTime?
+  lastError      String?
+  createdAt      DateTime        @default(now())
+
+  @@index([status, availableAt])
+}
+
+/// Status pengiriman pesan yang JUJUR. Tidak pernahClaims "sudah dibaca"
+/// hanya karena adapter mengembalikan sukses.
+model MessageDelivery {
+  id             String         @id @default(uuid()) @db.Uuid
+  chatJid        String
+  deliveryStatus DeliveryStatus @default(PENDING)
+  idempotencyKey String?        @unique
+  providerMessageId String?
+  payload        Json           @default("{}")
+  errorCode      String?
+  attempts       Int            @default(0)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([chatJid, createdAt])
+  @@index([deliveryStatus])
+}
+
+// =============================================================================
+// PROACTIVE INTELLIGENCE
+// =============================================================================
+
+model MonitoringConfiguration {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  eventId        String?  @db.Uuid
+  ownerUserId    String?  @db.Uuid
+  name           String
+  enabled        Boolean  @default(true)
+  /// JSON: aturan + kebijakan notifikasi (quiet hours, max per hari, digest).
+  rules          Json     @default("{}")
+  notifyPolicy   Json     @default("{}")
+  cronExpression String?
+  timezone       String   @default("Asia/Makassar")
+  lastRunAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  signals      OrganizationSignal[]
+
+  @@index([organizationId, enabled])
+}
+
+model OrganizationSignal {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @db.Uuid
+  monitoringId   String?         @db.Uuid
+  type           String
+  entityType     String
+  entityId       String?
+  severity       SignalSeverity  @default(INFO)
+  /// Hash kondisi. Mencegah notifikasi berulang untuk masalah yang sama.
+  fingerprint    String          @unique
+  detail         Json            @default("{}")
+  status         SignalStatus    @default(ACTIVE)
+  occurrences    Int             @default(1)
+  detectedAt     DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  resolvedAt     DateTime?
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  monitoring   MonitoringConfiguration? @relation(fields: [monitoringId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status])
+  @@index([entityId])
+}
+
+model Recommendation {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  summary        String
+  reasoning      String?
+  /// evidence | heuristic | speculative — dibedakan agar dugaan tidak
+  /// disajikan sebagai fakta.
+  basis          String   @default("heuristic")
+  confidence     Float?
+  evidenceRefs   Json     @default("[]")
+  suggestedActions Json   @default("[]")
+  status         String   @default("active")
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+}
+
+// =============================================================================
+// SKILL
+// =============================================================================
+
+model SkillRecord {
+  id           String      @id @default(uuid()) @db.Uuid
+  key          String      @unique
+  name         String
+  description  String
+  version      String      @default("1.0.0")
+  status       SkillStatus @default(DRAFT)
+  currentVersionId String?  @unique @db.Uuid
+  currentVersion   SkillVersion? @relation("CurrentSkillVersion", fields: [currentVersionId], references: [id])
+  approvedBy   String?     @db.Uuid
+  approvedAt   DateTime?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  versions SkillVersion[]
+}
+
+model SkillVersion {
+  id                 String       @id @default(uuid()) @db.Uuid
+  skillId            String       @db.Uuid
+  version            String
+  content            String
+  metadata           Json         @default("{}")
+  changelog          String?
+  createdByAgent     Boolean      @default(false)
+  createdAt          DateTime     @default(now())
+
+  skill     SkillRecord  @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  currentFor SkillRecord? @relation("CurrentSkillVersion")
+
+  @@unique([skillId, version])
+}

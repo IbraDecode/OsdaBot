@@ -1,0 +1,21 @@
+allowBuilds:
+  '@prisma/client': true
+  '@prisma/engines': true
+  '@whiskeysockets/baileys': true
+  esbuild: true
+  msgpackr-extract: true
+  prisma: true
+  protobufjs: true
+
+# Baileys menarik `libsignal` sebagai git dependency. pnpm >=11 memblokir
+# sub-dependency git secara default, jadi kita izinkan secara eksplisit.
+blockExoticSubdeps: false
+
+onlyBuiltDependencies:
+  - '@prisma/client'
+  - '@prisma/engines'
+  - '@whiskeysockets/baileys'
+  - esbuild
+  - msgpackr-extract
+  - prisma
+  - protobufjs

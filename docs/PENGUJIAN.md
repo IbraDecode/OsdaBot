@@ -1,0 +1,226 @@
+# Pengujian
+
+## Prinsip
+
+> Kalau bot bilang "sudah diubah" tapi database tidak berubah, **pengujiannya
+> yang gagal**, bukan botnya.
+
+Setiap pengujian yang menyentuh perubahan data memeriksa **database**, bukan
+teks respons.
+
+## Lapisan
+
+| Lapisan | Apa | Butuh layanan |
+|---|---|---|
+| Unit | Fungsi murni | Tidak |
+| Integrasi | Modul nyata + PostgreSQL | PostgreSQL |
+| Live | Provider sungguhan | AI gateway, WhatsApp |
+
+**Tidak ada pengujian otomatis yang mengirim pesan WhatsApp sungguhan.**
+Semua memakai `FakeWhatsAppProvider`.
+
+## Menjalankan
+
+```bash
+pnpm test                                   # semua test otomatis
+pnpm exec vitest run tests/unit             # unit saja
+pnpm exec vitest run tests/integration      # integrasi saja
+pnpm exec vitest run --coverage             # dengan coverage
+
+# Test live — hanya kalau benar-benar dibutuhkan
+RUN_LIVE_TESTS=true pnpm exec vitest run tests/live
+```
+
+Test live **dilewati secara default** supaya `pnpm test` di CI tidak pernah
+bergantung pada API berbayar.
+
+## Konfigurasi test
+
+`vitest.config.ts` menyediakan nilai environment uji:
+
+- Kalau ada `.env`, nilainya dipakai untuk test integrasi.
+- Kalau tidak, unit test tetap jalan dengan nilai palsu.
+- `test.env` diterapkan **sebelum modul apa pun dimuat**, jadi modul yang
+  memvalidasi env saat boot (`src/config/env.ts`) tidak gagal.
+
+```typescript
+const dummy = {
+  DATABASE_URL: 'postgresql://test:test@127.0.0.1:5432/osdabot_test',
+  AI_BASE_URL: 'http://127.0.0.1:9/v1',   // tidak akan pernah terhubung
+  AI_API_KEY: 'sk-test-key-not-real',
+  // ...
+}
+```
+
+## Unit (119 test)
+
+### `tests/unit/jid.test.ts`
+
+Normalisasi JID — dasar identitas.
+
+| Kasus | Yang dijamin |
+|---|---|
+| PN JID | Nomor diekstrak |
+| **LID JID** | `phoneNumber === null` — nomor TIDAK diasumsikan |
+| Grup `@g.us` | Dikenal sebagai grup |
+| Tanpa `@` | `null` — bukan JID |
+| Device suffix | Dibuang |
+| PN vs LID | **Tidak** dianggap sama |
+
+### `tests/unit/name-normalizer.test.ts`
+
+| Kasus | Yang dijamin |
+|---|---|
+| `canonicalizeName` | Huruf besar, spasi, tanda baca, gelar depan/belakang, aksen |
+| `similarityScore` | Skor 1 untuk identik, tinggi untuk sebagian, rendah untuk tidak berkaitan, toleran typo |
+| `decideMatch` | `unique` / `ambiguous` / `none` + margin |
+| `cleanNameInput` | Kata perintah dibuang dari nama |
+
+### `tests/unit/attendance-renderer.test.ts`
+
+Skenario produk yang jadi kontrak:
+
+- Judul dari pengguna dipertahankan.
+- Penomoran diperbarui saat anggota pindah seksi.
+- Alasan ditambahkan.
+- Anggota lain tidak berubah.
+- Marker bold dari markdown dihormati.
+- Footer template.
+
+### `tests/unit/permissions.test.ts`
+
+Invarian keamanan:
+
+- Semua permission punya deskripsi.
+- Tidak ada duplikat.
+- Semua permission masuk kelompok.
+- Role biasa tidak punya wildcard.
+- **Role anggota tidak punya `finance.read`, `members.delete`,
+  `whatsapp.bulk_send`.**
+- Hanya owner punya `system.configure` / `system.safe_mode`.
+- Role non-admin tidak bisa menghapus anggota.
+
+### `tests/unit/security.test.ts`
+
+Yang paling penting:
+
+```typescript
+it('MENOLAK tool kalau aktor tidak punya izin — walau AI memintanya', async () => {
+  const executeSpy = vi.fn()
+  registry.register({ ...dangerousTool, execute: executeSpy })
+
+  await registry.execute('test.delete_all', { target: 'semua' }, context)
+
+  expect(result.success).toBe(false)
+  expect(executeSpy).not.toHaveBeenCalled()   // ← bukti inti
+})
+```
+
+Juga: `AuthorizationService` gagal-closed saat database error, scope
+organisasi terpisah, validasi input menolak JSON rusak, batas jumlah tool call.
+
+### `tests/unit/skills.test.ts`
+
+- Front-matter di-parse dengan benar.
+- Metadata tidak valid **ditolak**, bukan dipakai setengah-setengah.
+- Skill nyata di repo termuat tanpa masalah.
+- Skill yang butuh izin yang tidak dimiliki **disaring**.
+- Skill tidak pernah memberi izin sendiri.
+
+### `tests/unit/server.test.ts`
+
+Verifikasi signature BaturPay: valid, salah panjang, salah isi.
+
+## Integrasi (35 test)
+
+`tests/integration/vertical-slice.test.ts` — modul **nyata**, provider **di-mock**.
+
+### Pipeline
+
+- Pesan sendiri sendiri → skip.
+- Pesan kosong → skip.
+- Pesan private → proses.
+- Grup belum tertaut → skip.
+- **Dedupe**: pesan dengan id sama hanya diproses sekali.
+- `dedupeKey` hanya bergantung pada account + message id (bukan isi pesan).
+
+### Kebijakan grup
+
+- Pesan tanpa sebutan bot → skip.
+- Pesan yang menyebut "osda" → proses.
+- Grup `activation: OFF` → skip.
+
+### Identity (terhadap database sungguhan)
+
+- Anggota unik ditemukan.
+- **Alias tunggal → unik** (nama panggilan yang jelas).
+- **Alias yang dipakai >1 orang → ambiguous**.
+- Anggota tidak ada → `none`.
+- Nama dengan gelar ("Bapak Ibra Ramdan") → unik.
+
+### Attendance service
+
+- Format dipertahankan saat render.
+- **Idempoten**: tambah anggota dua kali → satu entri.
+- Ubah hanya field yang diberikan.
+- **"ganti alasannya" tidak menghapus status**.
+- **Entri dari organisasi lain ditolak**.
+- Rekap per status benar.
+
+### Agent runtime dengan tool nyata
+
+- Menjalankan pencarian anggota lalu menjawab.
+- **Tool di luar izin ditolak** — dan orang tidak jadi dibuat di database.
+- Batas jumlah tool call menghentikan loop.
+- Tool call dengan JSON rusak ditolak.
+- **Aktor tanpa izin menerima nol tool** di prompt.
+
+## Live (10 test)
+
+`tests/live/ai-provider.live.test.ts` — hanya jalan dengan `RUN_LIVE_TESTS=true`.
+
+| Uji | Hasil terverifikasi |
+|---|---|
+| Provider bisa dihubungi | ✅ |
+| Menjawab bahasa Indonesia | ✅ |
+| **Memilih tool yang benar** untuk "osda ubah Danya jadi izin karena ada meeting" | ✅ `attendance.update`, `status=EXCUSED`, reason berisi "meeting` |
+
+Dua tool sengaja dibuat mirip supaya model tidak bisa asal memilih yang
+pertama.
+
+Test live punya timeout 120 detik — model reasoning butuh lebih lama dari
+default 30 detik.
+
+## Yang belum diuji
+
+| Area | Status | Alasan |
+|---|---|---|
+| Pairing WhatsApp live | ❌ | Tidak ada nomor yang boleh ditautkan |
+| Pengiriman pesan live | ❌ | Tidak boleh mengirim ke kontak sungguhan |
+| Group mention live | ❌ | Butuh grup uji yang disetujui |
+| BaturPay live | ❌ | Tidak ada key sandbox |
+| Redis / BullMQ | ❌ | Worker belum diimplementasi |
+| Pemulihan setelah restart | ❌ | Belum ada job terjadwal |
+
+Status ini jujur: modul di atas **terimplementasi**, tapi **belum terverifikasi
+terhadap layanan sungguhan**.
+
+## Standard regresi
+
+Setiap perubahan baru wajib menjalankan:
+
+```bash
+pnpm typecheck && pnpm test
+```
+
+Yang tidak boleh rusak:
+
+- [x] Normalisasi pesan WhatsApp
+- [x] Kebijakan aktivasi grup
+- [x] Resolusi identitas & ambiguitas
+- [x] Otorisasi backend
+- [x] Isolasi organisasi
+- [x] Format daftar hadir
+- [x] Idempoten attendance
+- [ ] Pemulihan setelah restart (belum ada)
+- [ ] Job terjadwal (belum ada)

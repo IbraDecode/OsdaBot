@@ -1,0 +1,46 @@
+# --- Dependencies ---
+node_modules/
+.pnpm-store/
+
+# --- Build ---
+dist/
+build/
+*.tsbuildinfo
+
+# --- Environment & secrets (JANGAN pernah di-commit) ---
+# .env sudah di .gitignore, tapi jaga-jaga kalau pernah terbawa
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# --- WhatsApp session Baileys (SANGAT SENSITIF) ---
+auth_info_baileys/
+baileys_store.json
+*.baileys.json
+whatsapp-session/
+
+# --- Storage dokumen / artifact lokal ---
+storage/
+!storage/.gitkeep
+tmp/
+
+# --- Test & eval output ---
+coverage/
+reports/
+evals/reports/*.json
+evals/reports/*.md
+!evals/reports/.gitkeep
+
+# --- Logs ---
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# --- Editor & OS ---
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp

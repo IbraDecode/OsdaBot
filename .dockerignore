@@ -1,0 +1,8 @@
+storage/
+.tmp/
+*.pid
+*.seed
+
+# .env sudah di .gitignore, tapi jaga-jaga kalau pernah ikut terbawa
+.env*
+!.env.example
