@@ -8,7 +8,8 @@ diperbarui di perubahan yang sama.
 |---|---|
 | [ARSITEKTUR.md](./ARSITEKTUR.md) | Gambaran sistem, batas modul, keputusan desain |
 | [WHATSAPP.md](./WHATSAPP.md) | Integrasi Baileys, LID, session, failure mode |
-| [WHATSAPP-OPS.md](./WHATSAPP-OPS.md) | Pairing, nomor bot/admin, troubleshooting |
+| [WHATSAPP-OPS.md](./WHATSAPP-OPS.md) | Operasional harian, nomor bot/admin, troubleshooting |
+| [WHATSAPP-PAIRING.md](./WHATSAPP-PAIRING.md) | **Riset mendalam pairing & akar masalah "kode ditolak"** |
 | [IDENTITAS.md](./IDENTITAS.md) | Identity Engine, PBJ LHS, resolution nama |
 | [KEHADIRAN.md](./KEHADIRAN.md) | Attendance service & pelestarian format |
 | [AGENT.md](./AGENT.md) | Agent Runtime, tool loop, batas, prompt |

@@ -15,7 +15,7 @@ pnpm db:migrate && pnpm db:seed && pnpm dev
 
 | | |
 |---|---|
-| Test | **164 lulus, 0 gagal** |
+| Test | **176 lulus, 0 gagal** |
 | Tool | 15 |
 | Skill | 3 |
 | Permission | 50 |
@@ -61,7 +61,7 @@ src/
 skills/             Kemampuan berbasis Markdown
 docs/               Dokumentasi berbahasa Indonesia
 tests/
-├── unit/           Fungsi murni (129 test)
+├── unit/           Fungsi murni (141 test)
 ├── integration/    Modul nyata + PostgreSQL (35 test)
 └── live/           Provider sungguhan (10 test)
 ```
@@ -218,7 +218,8 @@ Dua nomor punya peran berbeda dan **wajib berbeda**:
 | `WHATSAPP_LINK_PHONE` | Nomor akun **BOT** yang ditautkan ke Baileys |
 | `WHATSAPP_ADMIN_PHONE` | Nomor **pemilik** — tidak pernah dikirim ke WhatsApp |
 
-Detail: [docs/WHATSAPP-OPS.md](./docs/WHATSAPP-OPS.md)
+Riset lengkap kenapa "kode ditolak": [docs/WHATSAPP-PAIRING.md](./docs/WHATSAPP-PAIRING.md)
+Detail operasional: [docs/WHATSAPP-OPS.md](./docs/WHATSAPP-OPS.md)
 
 ## Perintah
 

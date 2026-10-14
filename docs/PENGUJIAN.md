@@ -52,7 +52,7 @@ const dummy = {
 }
 ```
 
-## Unit (129 test)
+## Unit (141 test)
 
 ### `tests/unit/jid.test.ts`
 
@@ -139,6 +139,20 @@ Verifikasi signature BaturPay:
 - Panjang salah & non-hex ditolak tanpa melempar error.
 - `timingSafeEqual` dipakai, bukan `===`.
 - Status tak dikenal → `undefined`, bukan default berbahaya.
+
+### `tests/unit/pairing-config.test.ts`
+
+12 test yang mengunci empat akar masalah pairing:
+
+- `platformIdOf(companionBrowserIdentity())` = `CHROME` (bukan `OTHER_WEB_CLIENT`).
+- **Regresi:** `Browsers.ubuntu('OSDABOT')` menghasilkan `OTHER_WEB_CLIENT` —
+  konfigurasi yang membuat server balas `400 bad-request`.
+- Semua nama browser yang dikenali lolos; nama sembarang ditolak (pencocokan eksak).
+- `shouldReconnect(515)` = `true` — `restartRequired` berarti restart, bukan logout.
+- Kode logout/forbidden/419/411/440/405/463 tetap `false`.
+
+Test ini sengaja **menyalin** logika `getCompanionWebClientType()` dari Baileys.
+Kalau Baileys mengubah pemetaannya, test gagal — bukan diam-diam merusak pairing.
 
 ### `tests/unit/phone-config.test.ts`
 

@@ -30,7 +30,8 @@ Status memakai lima tingkat:
 | HTTP server | `TESTED` | `/health`, `/ready` jalan |
 | CLI | `IMPLEMENTED` | 10 perintah, membaca data nyata |
 | WhatsApp handshake | `VERIFIED` | Noise handshake berhasil, QR & pairing code dibuat |
-| **WhatsApp pairing** | `PENDING SCAN` | Kode pairing berhasil dibuat, menunggu dipindai dari HP |
+| WhatsApp pairing config | `VERIFIED` | Akar masalah "kode ditolak" ditemukan & diperbaiki |
+| **WhatsApp pairing** | `PENDING SCAN` | Menunggu konfirmasi HP setelah perbaikan |
 | **WhatsApp live** | `NOT VERIFIED` | Adapter ada, pairing belum selesai |
 | **BaturPay live** | `NOT VERIFIED` | Adapter ada, transaksi belum |
 | Automation / BullMQ | `NOT IMPLEMENTED` | — |
@@ -113,10 +114,10 @@ Setiap perintah **membaca kondisi nyata** dari database dan provider.
 
 | Yang diukur | Nilai |
 |---|---|
-| Test unit | 129 lulus |
+| Test unit | 141 lulus |
 | Test integrasi | 35 lulus |
 | Test live | 10 lulus (dengan `RUN_LIVE_TESTS=true`) |
-| **Total** | **164 lulus, 0 gagal** |
+| **Total** | **176 lulus, 0 gagal** |
 | Tool terdaftar | 15 |
 | Skill termuat | 3 |
 | Permission | 50 |
@@ -168,6 +169,21 @@ sudah disiapkan. Implementasinya belum.
 ### Prompt versioning
 
 Prompt saat ini inline di `src/agent/prompt.ts`. Belum ada sistem versi.
+
+## Temuan penting (pairing)
+
+Empat akar masalah ditemukan lewat pairing langsung, bukan lewat dokumentasi:
+
+| Temuan | Gejala | Status |
+|---|---|---|
+| `browser[1]` bukan nama tampilan tapi **identifier tipe browser** | Server balas `400 bad-request` → kode ditolak | Diperbaiki |
+| 515 (`restartRequired`) ikut di-nomina no-reconnect | Pairing sukses tapi registrasi tak pernah selesai | Diperbaiki |
+| `isNewLogin` dikirim tanpa field `connection` | Pairing sukses diam-diam dilewati | Diperbaiki |
+| `initAuthCreds()` terlewat | Handshake crash total | Diperbaiki |
+
+Rinciannya: [WHATSAPP-PAIRING.md](./WHATSAPP-PAIRING.md)
+
+12 test regresi mengunci ketiganya (`tests/unit/pairing-config.test.ts`).
 
 ## Yang belum terverifikasi
 

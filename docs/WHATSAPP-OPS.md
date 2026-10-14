@@ -31,6 +31,16 @@ Lombok:    6281234567890
 
 Validasi boot menolak kalau panjangnya di luar 8–15 digit.
 
+### Nama browser saat pairing
+
+```ts
+browser: ['Ubuntu', 'Chrome', '22.04.4']
+```
+
+Elemen kedua **wajib** `Chrome`. Ini bukan nama tampilan — itu identifier tipe
+browser yang divalidasi server. Pakai nama merek sendiri (`OSDABOT`) membuat
+server menolak pairing dengan `400 bad-request`.
+
 Nomor di log selalu disamarkan (`maskPhone`):
 
 ```
@@ -94,6 +104,20 @@ pnpm osda doctor            # diagnosis keseluruhan
 ---
 
 # Troubleshooting
+
+## Kode ditolak / tidak bisa ditautkan
+
+**Baca [`WHATSAPP-PAIRING.md`](./WHATSAPP-PAIRING.md)** — ada riset lengkap
+soal ini.
+
+Ringkasnya, penyebab yang sudah ditemukan & diperbaiki:
+
+1. `browser[1]` harus persis `Chrome` (atau Edge/Firefox/IE/Opera/Safari).
+   Nama merek sendiri → `platformId 9` → server balas `400 bad-request`.
+2. 515 (`restartRequired`) harus di-reconnect — itu permintaan restart dari
+   server setelah pairing sukses.
+3. `isNewLogin` harus ditangani — Baileys mengirimnya tanpa field `connection`.
+4. `initAuthCreds()` wajib dipanggil saat belum ada session.
 
 ## `Cannot read properties of undefined (reading 'public')`
 

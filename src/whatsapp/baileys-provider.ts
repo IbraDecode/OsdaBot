@@ -111,6 +111,35 @@ const baileysLog = logger.child({ module: 'baileys' }, {
 
 
 /**
+ * Identitas browser yang dikirim ke server WhatsApp.
+ *
+ * ── Kenapa tidak boleh bebas ────────────────────────────────────────────────
+ * Elemen KEDUA dari tuple browser bukan nama tampilan — itu IDENTIFIER TIPE
+ * BROWSER yang dipakai `getCompanionWebClientType()` di Baileys:
+ *
+ *     BROWSER_TO_COMPANION_WEB_CLIENT = { Chrome: 1, Edge: 2, Firefox: 3,
+ *                                         IE: 4, Opera: 5, Safari: 6 }
+ *     return BROWSER_TO_COMPANION_WEB_CLIENT[browserName] ?? OTHER_WEB_CLIENT(9)
+ *
+ * Pencocokan itu EKSAK. Nama di luar daftar itu jatuh ke `9`
+ * (OTHER_WEB_CLIENT), dan server WhatsApp membalas pairing dengan
+ * `400 bad-request` — kodenya tetap tercetak, tapi mustahil dipakai.
+ *
+ * Ini persis symptom "pairing code berhasil dibuat tapi ditolak" yang
+ * dilaporkan di issue Baileys #1266 dan #1761.
+ *
+ * Platform `Ubuntu` dipakai karena kombinasi `["Ubuntu", "Chrome", ...]`
+ * satu-satunya yang dikonfirmasi berhasil oleh beberapa pelapor
+ * independen, termasuk di dalam Docker.
+ */
+export function companionBrowserIdentity(): [string, string, string] {
+  return ['Ubuntu', 'Chrome', '22.04.4']
+}
+
+/** Nama browser yang dikenali server. Sisanya ditolak saat pairing. */
+export const RECOGNIZED_BROWSER_NAMES = ['Chrome', 'Edge', 'Firefox', 'IE', 'Opera', 'Safari'] as const
+
+/**
  * Cache msgRetryCounter HARUS hidup di luar socket.
  * Source: Example/example.ts — "keep this out of the socket itself, so as to
  * prevent a message decryption/encryption loop across socket restarts".
@@ -149,13 +178,23 @@ const groupMetadataCache = createSimpleCache(60 * 60 * 1000)
 
 /** Kode status yang TIDAK boleh di-reconnect. */
 const NO_RECONNECT = new Set<number>([
-  ...UNAUTHORIZED_CODES, // 401, 403, 419
-  DisconnectReason.multideviceMismatch, // 411
+  ...UNAUTHORIZED_CODES, // 401 loggedOut, 403 forbidden, 419 unauthorized
+  DisconnectReason.multideviceMismatch, // 411 — perlu unlink manual di HP
   DisconnectReason.connectionReplaced, // 440 — device lain memakai session ini
-  DisconnectReason.restartRequired, // 515
   405, // "Connection Failure" saat pairing — throttling sisi server
   463, // "Reachout Timelock" — risiko BAN
 ])
+
+/**
+ * 515 (restartRequired) SENGAJA TIDAK ADA di NO_RECONNECT.
+ *
+ * Ini sebab paling sering pairing code "berhasil dibuat tapi tidak pernah
+ * tertaut": setelah `pair-success`, server meminta koneksi di-restart dan
+ * mengirim 515. Kalau 515 ikut di-nominasi, socket berhenti permanen dan
+ * registrasi tidak pernah diselesaikan.
+ *
+ * 515 artinya "restart", bukan "logout". Reconnect justru yang diminta.
+ */
 
 /**
  * Keputusan reconnect.
@@ -251,7 +290,7 @@ export class BaileysProvider implements WhatsAppProvider {
         keys: makeCacheableSignalKeyStore(state.keys, log),
       },
       logger: baileysLog,
-      browser: Browsers.ubuntu(this.browserName),
+      browser: companionBrowserIdentity(),
       // Bot boleh online 24/7 tanpa membuat HP utama kehilangan notifikasi.
       markOnlineOnConnect: env.WHATSAPP_MARK_ONLINE_ON_CONNECT,
       // Bot tidak butuh riwayat chat lama — menghemat waktu start & RAM.
@@ -316,12 +355,30 @@ export class BaileysProvider implements WhatsAppProvider {
     connection?: 'open' | 'connecting' | 'close'
     lastDisconnect?: { error?: Boom | Error }
     qr?: string
+    isNewLogin?: boolean
     receivedPendingNotifications?: boolean
   }): Promise<void> {
-    const { connection, lastDisconnect, qr } = update
+    const { connection, lastDisconnect, qr, isNewLogin } = update
 
     if (qr) {
       this.emit('qr', qr)
+      return
+    }
+
+    /**
+     * `isNewLogin` = server mengonfirmasi pairing BERHASIL.
+     *
+     * Baileys mengirimnya TANPA field `connection`, jadi handler lama
+     * melewatkannya sepenuhnya — dan pairing pun menggantung tanpa selesai.
+     *
+     * Setelah pairing berhasil, server meminta koneksi di-restart (515).
+     * Kita biarkan `handleConnectionUpdate` yang menutup socket, lalu
+     * `shouldReconnect(515)` yang mengembalikan true dan memulai ulang.
+     */
+    if (isNewLogin) {
+      this.reconnectAttempts = 0
+      this.setStatus('reconnecting', this.status.phoneNumber, 'pairing berhasil, menyelesaikan registrasi')
+      log.info('pairing berhasil — menunggu koneksi ulang untuk menyelesaikan registrasi')
       return
     }
 
