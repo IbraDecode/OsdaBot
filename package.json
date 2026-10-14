@@ -25,7 +25,10 @@
     "db:seed": "tsx --env-file-if-exists=.env src/database/seed.ts",
     "lint": "tsc --noEmit",
     "check": "pnpm typecheck && pnpm test",
-    "osda:pair": "tsx --env-file-if-exists=.env src/cli/pair.ts"
+    "osda:pair": "tsx --env-file-if-exists=.env src/cli/pair.ts",
+    "osda:pair:debug": "tsx --env-file-if-exists=.env src/cli/pair-debug.ts",
+    "osda:pair:daemon": "tsx --env-file-if-exists=.env src/cli/pair-daemon.ts",
+    "osda:pair:code": "tsx src/cli/pair-code.ts"
   },
   "dependencies": {
     "@prisma/client": "6.16.2",

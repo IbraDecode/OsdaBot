@@ -43,4 +43,5 @@ pnpm-debug.log*
 .idea/
 .vscode/*
 !.vscode/extensions.json
-*.swp
+*.swp.pairing-state.json
+pairing.log

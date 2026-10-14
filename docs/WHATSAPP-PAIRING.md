@@ -1,10 +1,14 @@
-# Pairing WhatsApp — Riset & Akar Masalah
+# Pairing WhatsApp — Akar Masalah "Kode Dibuat Tapi Tidak Bisa Ditautkan
 
-Dokumen ini menjelaskan kenapa "kode pairing berhasil dibuat tapi tidak bisa
-ditautkan" — symptom yang sangat umum dan hampir selalu disalahdiagnosis.
+Dokumen ini merekam hasil diagnosa bertahap terhadap gejala: kode pairing
+berhasil dicetak, tapi tidak pernah berhasil dipakai.
 
-Semua temuan di sini diverifikasi dari source Baileys 7.0.0-rc14 dan GitHub
-issues, bukan dari dokumentasi (yang sebagian sudah usang).
+**Jawaban akhirnya: server memblokir percobaan pairing dengan HTTP 429
+`rate-overlimit`.** Bukan bug kode, bukan format nomor, bukan cara Anda
+meng	input kode.
+
+Semua temuan di sini diverifikasi dari sumber Baileys 7.0.0-rc14 dan dari
+frame server yang ditangkap langsung.
 
 ---
 
@@ -14,273 +18,170 @@ issues, bukan dari dokumentasi (yang sebagian sudah usang).
 pnpm osda:pair --code
 
   Nomor bot : 6285177653481
-  Kode      : K98KH14T
+  Kode      : A7JB8Z7L
 ```
 
-Kode **keluar normal**. Tapi ketika dimasukkan di WhatsApp:
-
-- Kode ditolak sebagai tidak valid / tidak cocok, **atau**
-- Tidak ada notifikasi di WhatsApp, **atau**
-- Kode masuk tapi sambungan tidak pernah selesai.
-
-Semua ini adalah symptom yang **sama**, dengan beberapa penyebab berbeda.
+Kode keluar normal. Tapi ketika dimasukkan di WhatsApp: tidak ada respons apa
+pun. Tidak ada error, tidak ada notifikasi, tidak ada apa-apa.
 
 ---
 
-## 2. Akar masalah #1 — `companion_platform_id` salah
+## 2. Kenapa diagnosis biasa gagal
 
-### Fakta dari source
+### 2.1 `requestPairingCode()` tidak pernah memeriksa jawaban server
 
-`requestPairingCode()` mengirim dua hal terkait browser:
-
-```ts
-content: getCompanionPlatformId(browser),
-// dan
-content: `${browser[1]} (${browser[0]})`,   // companion_platform_display
+```js
+const requestPairingCode = async (phoneNumber, customPairingCode) => {
+    const pairingCode = customPairingCode ?? bytesToCrockford(randomBytes(5))
+    ...
+    await sendNode({ tag: 'iq', ... })   // ← hanya menulis
+    return pairingCode                    // ← selalu dianggap "berhasil"
+}
 ```
 
-Dan `getCompanionPlatformId()` memanggil:
+`sendNode()` menulis ke WebSocket dan **tidak menunggu balasan**. Bandingkan
+dengan `query()` di socket yang sama, yang memakai `waitForMessage()` lalu
+`assertNodeErrorFree()`.
 
-```ts
-// lib/Utils/companion-reg-client-utils.js
-const BROWSER_TO_COMPANION_WEB_CLIENT = {
-    Chrome: 1, Edge: 2, Firefox: 3, IE: 4, Opera: 5, Safari: 6
-};
+Jadi node `<iq type="error">` dari server **tidak pernah dicek**. Kode tetap
+tercetak normal walaupun server sudah menolaknya, dan tidak ada satu baris pun
+yang mengatakannya.
 
-export const getCompanionWebClientType = ([os, browserName]) => {
-    if (browserName === 'Desktop') { ... }
-    return BROWSER_TO_COMPANION_WEB_CLIENT[browserName] || OTHER_WEB_CLIENT  // 9
-};
+**Konsekuensi:** tidak ada cara melihat penolakan kecuali memasang
+listener sendiri di `ws.on('frame', …)`.
+
+### 2.2 Socket pairing punya umur terbatas
+
+Server hanya mengirim sejumlah kecil "pairing ref". Baileys menghabiskannya
+satu per satu setiap rotasi QR:
+
+```js
+const genPairQR = () => {
+    if (!ws.isOpen) return
+    const refNode = refNodes.shift()
+    if (!refNode) {
+        void end(new Boom('QR refs attempts ended', { statusCode: 408 }))
+        return
+    }
+    ...
+    qrTimer = setTimeout(genPairQR, qrMs)
+    qrMs = qrTimeout || 20000   // QR pertama 60 detik, berikutnya 20
+}
 ```
 
-**Pencocokan itu EKSAK dan TIDAK ADA normalisasi.** `browser[1]` bukan nama
-tampilan — itu identifier tipe browser yang divalidasi server.
+Terukur di server ini: socket bertahan **162 detik** dari koneksi sampai
+`QR refs attempts ended` (60 + 5 × 20).
 
-### Bukti kegagalan
+Artinya: kode pairing punya jendela sekitar 2,5 menit. Setelah itu socket
+mati dan kode yang sudah dicetak tidak berlaku lagi.
 
-Konfigurasi yang dipakai sebelumnya:
+---
 
-```ts
-browser: Browsers.ubuntu('OSDABOT')
-// → ['Ubuntu', 'OSDABOT', '22.04.4']
-```
+## 3. Bukti penolakan
 
-| Elemen | Nilai | Divalidasi? |
-|---|---|---|
-| `browser[0]` | `Ubuntu` | Tidak dipakai untuk platform id |
-| `browser[1]` | `OSDABOT` | ✗ Tidak ada di peta → `OTHER_WEB_CLIENT` |
-| `browser[2]` | `22.04.4` | Tidak dipakai |
-
-Hasil: server menerima `companion_platform_id = 9` (OTHER_WEB_CLIENT) dan
-membalas **`400 bad-request`**.
-
-Konfigurasi yang benar:
-
-```ts
-browser: ['Ubuntu', 'Chrome', '22.04.4']
-// → platform id = 1 (CHROME)
-```
-
-### Verifikasi langsung
+Pendengar frame yang dipasang di `pair-daemon.ts`:
 
 ```
-config                    tuple                            platformId
-─────────────────────────────────────────────────────────────────────────
-SAYA (sebelumnya)         ["Ubuntu","OSDABOT","22.04.4"]   9  ← ditolak
-Known-works (issue #1761) ["Ubuntu","Chrome","20.0.04"]    1  ← diterima
+── [SERVER] ──
+  <iq from='@s.whatsapp.net' type='error' id='15932.41095-1'>
+        <error code='429' text='rate-overlimit'/>
+  </iq>
+── [SERVER] ──
+  <iq from='@s.whatsapp.net' type='error' id='15932.41095-2'>
+        <error code='429' text='rate-overlimit'/>
+  </iq>
 ```
 
-### Konfirmasi dari komunitas
+**`429 rate-overlimit`.** Server WhatsApp sedang memblokir percobaan pairing
+dari IP ini.
 
-| Issue | Temuan |
+Karena itu kode yang dicetak tetap "berhasil" secara lokal, tapi mustahil
+dipakai — permintaan pairing-nya memang ditolak di sisi server.
+
+---
+
+## 4. Riwayat diagnosis yang salah (dicatat supaya tidak diulang)
+
+| Dugaan | Kenyataan |
 |---|---|
-| [#1266](https://github.com/WhiskeySockets/Baileys/issues/1266) | "When I define `browser` in `makeWASocket`, the code doesn't connect. Baileys does generate a CODE, but the standard WhatsApp notification does not arrive." |
-| [#1761](https://github.com/WhiskeySockets/Baileys/issues/1761) | Log pelapor menunjukkan `"code":"400","text":"bad-request"`. Diselesaikan dengan `browser: ["Ubuntu", "Chrome", "20.0.04"]` — dikonfirmasi 2 pelapor independen. |
+| Format nomor salah | Nomor lolos validasi, dan `companion_hello` diterima server |
+| `browser[1]` = `OSDABOT` ditolak dengan `400 bad-request` | **Ragu.** Dulu `platformId` memang `9`, tapi setelah diubah ke `Chrome` (`1`) server tetap memblokir — dengan `429`, bukan `400`. Perbaikan ini mungkin memang perlu, tapi **bukan penyebab gejala ini** |
+| 515 (`restartRequired`) tidak di-reconnect | Perbaikan masuk akal secara protokol, tapi tidak menjelaskan gejala di sini |
+| Kode `initAuthCreds()` terlewat | **Benar.** Handshake memang crash total tanpa itu. Bug nyata, tapi sudah diperbaiki lebih dulu |
+| Kode mati karena proses dibunuh `timeout` | **Benar sebagai contributing factor**, tapi bukan akar masalah |
 
-Log pelapor #1761:
-
-```json
-{"frame":{"tag":"iq","attrs":{"from":"@s.whatsapp.net","type":"error"},
-  "content":[{"tag":"error","attrs":{"code":"400","text":"bad-request"}}]}}
-```
-
-### Perbaikan di OSDABOT
-
-```ts
-export function companionBrowserIdentity(): [string, string, string] {
-  return ['Ubuntu', 'Chrome', '22.04.4']
-}
-
-export const RECOGNIZED_BROWSER_NAMES = ['Chrome', 'Edge', 'Firefox', 'IE', 'Opera', 'Safari'] as const
-```
-
-`Ubuntu` + `Chrome` dipilih karena kombinasi itu satu-satunya yang terkonfirmasi
-berhasil oleh beberapa pelapor independen, termasuk di dalam Docker.
-
-### Nama bot di tempat lain
-
-Nama "Osda" tetap dipakai untuk `WHATSAPP_BOT_NAME` (pemicu di grup). Yang
-tidak boleh dipakai adalah `browser[1]` — itu slot tipe browser.
+Pelajaran: tanpa menangkap frame server, semua ini hanya tebakan yang
+terlihat meyakinkan.
 
 ---
 
-## 3. Akar masalah #2 — 515 (restartRequired) di-nomina
+## 5. Perbaikan yang diterapkan
 
-### Fakta dari source
+### 5.1 Daemon pairing persisten
 
-Setelah pairing berhasil, Baileys menerima `CB:iq,,pair-success`:
+Kode hanya hidup selama socket-nya hidup. Kalau proses berhenti, socket
+tertutup, dan kode mati tanpa penjelasan.
 
-```js
-ws.on('CB:iq,,pair-success', async (stanza) => {
-    // ...
-    const { reply, creds: updatedCreds } = configureSuccessfulPairing(stanza, creds);
-    ev.emit('creds.update', updatedCreds);
-    ev.emit('connection.update', { isNewLogin: true, qr: undefined });
-    await sendNode(reply);
-});
+Daemon (`src/cli/pair-daemon.ts`) karena itu:
+
+1. Tetap hidup sampai pairing benar-benar berhasil.
+2. Meminta kode BARU setiap reconnect — kode lama mati bersama socket lama.
+3. Menulis kode terbaru ke `.pairing-state.json` (tulis atomik via `rename`).
+4. Menangkap dan mencetak frame server yang relevan, termasuk `<error>`.
+5. **Berhenti total saat kena 429** — retry hanya memperpanjang blokir.
+
+### 5.2 Perintah pendukung
+
+```bash
+nohup pnpm osda:pair:daemon > pairing.log 2>&1 &   # daemon
+pnpm osda:pair:code     # baca kode terbaru + status
+pnpm osda:pair:debug    # tangkap frame server
 ```
 
-Komentar di source: *"if device pairs successfully, the server asks to restart
-the connection"*.
-
-Artinya: setelah pairing sukses, server menutup socket dengan **515
-(restartRequired)** dan **meminta** supaya klien tersambung ulang untuk
-menyelesaikan registrasi.
-
-### Bug sebelumnya
-
-```ts
-const NO_RECONNECT = new Set<number>([
-  ...UNAUTHORIZED_CODES,                              // 401, 403, 419
-  DisconnectReason.multideviceMismatch,              // 411
-  DisconnectReason.connectionReplaced,               // 440
-  DisconnectReason.restartRequired,                   // 515  ← SALAH
-  405, 463,
-])
-```
-
-515 di-nomina sebagai "jangan reconnect" → socket berhenti permanen → registrasi
-tidak pernah diselesaikan → **pairing menggantung**.
-
-### Perbaikan
-
-515 **dihapus** dari daftar. 515 berarti "restart", bukan "logout". Reconnect justru yang diminta server.
-
-Perbedaan penting:
-
-| Kode | Arti | Reconnect? |
-|---|---|---|
-| 401 `loggedOut` | Pengguna logout dari HP | ✗ |
-| 403 `forbidden` | Akun diblokir | ✗ |
-| 419 | Unauthorized | ✗ |
-| 411 `multideviceMismatch` | Perlu unlink di HP | ✗ |
-| 440 `connectionReplaced` | Device lain pakai session ini | ✗ |
-| **515 `restartRequired`** | **Server minta restart** | **✓** |
-| 405 | Throttling pairing | ✗ (risiko ban) |
-| 463 | Reachout timelock | ✗ (risiko ban) |
+Kode keluar `3` bila kena rate limit; `pnpm osda:pair:code` menjelaskannya.
 
 ---
 
-## 4. Akar masalah #3 — `isNewLogin` dilewati
+## 6. Cara yang benar memakai pairing
 
-### Fakta dari source
-
-```js
-ev.emit('connection.update', { isNewLogin: true, qr: undefined });
+```
+1.  nohup pnpm osda:pair:daemon > pairing.log 2>&1 &
+2.  pnpm osda:pair:code            # catat kode 8 karakter
+3.  WhatsApp nomor bot
+      Perangkat Tertaut -> Tautkan Perangkat
+      -> "Tautkan dengan nomor telepon" -> masukkan kode
+4.  pnpm start                     # setelah tertaut
 ```
 
-Perhatikan: **tidak ada field `connection`**. Handler lama hanya bercabang pada
-`connection`:
+Aturan yang tidak boleh dilanggar:
 
-```ts
-// SEBELUMNYA — isNewLogin tidak pernah masuk cabang mana pun
-if (qr) { ... }
-if (connection === 'connecting') { ... }
-if (connection === 'open') { ... }
-if (connection === 'close') { ... }
-// isNewLogin? fell through — diam-diam
-```
-
-Akibatnya Pairing sukses **tidak pernah dilaporkan** ke status, dan tidak ada
-berlog bahwa registrasi sedang diselesaikan.
-
-### Perbaikan
-
-```ts
-if (isNewLogin) {
-  this.reconnectAttempts = 0
-  this.setStatus('reconnecting', this.status.phoneNumber,
-    'pairing berhasil, menyelesaikan registrasi')
-  log.info('pairing berhasil — menunggu koneksi ulang untuk menyelesaikan registrasi')
-  return
-}
-```
+- **Satu proses pairing saja.** Dua proses berebut dan saling membatalkan.
+- **Jangan jalankan pairing code dan QR bersamaan.**
+- **Jangan ulangi terlalu cepat.** Itu penyebab langsung dari 429.
+- Kode berupa **8 karakter huruf + angka** (`A7JB8Z7L`). Bukan 18 digit, bukan
+  nomor HP, dan tidak ada hubungannya dengan QR.
 
 ---
 
-## 5. Akar masalah #4 — `initAuthCreds()` terlewat
+## 7. Kalau masih kena 429
 
-Gejala:
+1. Berhenti total. Jangan jalankan apa pun yang menyentuh pairing.
+2. Tunggu minimal 1 jam; beberapa jam lebih aman.
+3. Pastikan tidak ada proses pairing lain yang masih hidup:
 
-```
-TypeError: Cannot read properties of undefined (reading 'public')
-  at processHandshake (lib/Utils/noise-handler.ts:225)
-```
+   ```bash
+   ps -eo pid,args | grep src/cli/pair
+   ```
 
-Penyebab: `loadSession()` mengembalikan `{}` kalau `creds.json` belum ada:
+4. Setelah cooldown, jalankan **satu** daemon dan langsung masukkan kodenya.
 
-```ts
-// SEBELUMNYA — SALAH
-creds: creds ?? ({} as AuthenticationCreds)
-```
-
-Baileys butuh `noiseKey`, `signedIdentityKey`, `signedPreKey`,
-`advSecretKey`. `useMultiFileAuthState` melakukan ini diam-diam
-(`?? initAuthCreds()`) — store kustom kita melewatkannya.
-
-```ts
-// SESUDAH
-creds: creds ?? initAuthCreds(),
-```
-
-Ironis: store ini justru ditulis karena `useMultiFileAuthState` tidak
-dipercaya (menelan error saat file korup), lalu tepercaya-kan lagi tanpa init.
+Kalau setelah cooldown masih `429`, penyebabnya bukan frekuensi — periksa
+apakah ada proses lain di server atau jaringan yang ikut memakai pairing.
 
 ---
 
-## 6. Gejala yang mirip tapi beda penyebab
+## 8. Prasyarat yang tidak bisa diverifikasi dari server
 
-| Gejala | Penyebab | Solusi |
-|---|---|---|
-| Kode ditolak saat dimasukkan | `browser[1]` salah | `['Ubuntu', 'Chrome', ...]` |
-| Kode masuk tapi tidak selesai | 515 tidak di-reconnect | Hapus 515 dari NO_RECONNECT |
-| Tidak ada apa-apa terjadi | `isNewLogin` dilewati | Handle `isNewLogin` |
-| Gagal sebelum QR tampil | `initAuthCreds()` terlewat | Pakai `initAuthCreds()` |
-| "Connection Closed" | Socket belum siap | Tunggu QR + retry |
-| Kode valid tapi tidak ada notifikasi | Perlu cek manual di HP | Buka Perangkat Tertaut → Tautkan Perangkat secara manual |
-
----
-
-## 7. Catatan penting soal pairing code
-
-- **Satu perangkat per nomor.** Pairing code hanya bisa dipakai sekali.
-- **Harus manual di HP.** Server tidak mengirim push notification untuk pairing
-  code (berbeda dengan flow resmi). Pengguna harus membuka WhatsApp →
-  Perangkat Tertaut → Tautkan Perangkat → "Tautkan dengan nomor telepon".
-- **Masa berlaku** tidak diatur di sisi Baileys. Invalidasi datang dari server
-  dan tidak terdokumentasi. Jangan mengklaim "kedaluwarsa 60 detik".
-
----
-
-## 8. Pencegahan regresi
-
-`tests/unit/pairing-config.test.ts` (12 test) mengunci ketiga aturan:
-
-- `platformIdOf(companionBrowserIdentity()) === CHROME` (bukan OTHER_WEB_CLIENT)
-- `Browsers.ubuntu('OSDABOT')` menghasilkan OTHER_WEB_CLIENT (regresi terdeteksi)
-- Semua `RECOGNIZED_BROWSER_NAMES` lolos; nama sembarang tidak
-- `shouldReconnect(515) === true`
-- Kode logout/forbidden/419/411/440/405/463 tetap `false`
-
-Kalau suatu saat Baileys mengubah pemetaan browser atau daftar
-`DisconnectReason`, test ini gagal — bukan diam-diam merusak pairing lagi.
+Nomor bot `6285177653481` harus punya WhatsApp terpasang dan aktif. Kalau belum
+pernah pakai WhatsApp, pairing tidak akan pernah berhasil dan tidak ada kode
+server yang bisa membenarkannya.

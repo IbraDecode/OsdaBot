@@ -30,8 +30,9 @@ Status memakai lima tingkat:
 | HTTP server | `TESTED` | `/health`, `/ready` jalan |
 | CLI | `IMPLEMENTED` | 10 perintah, membaca data nyata |
 | WhatsApp handshake | `VERIFIED` | Noise handshake berhasil, QR & pairing code dibuat |
-| WhatsApp pairing config | `VERIFIED` | Akar masalah "kode ditolak" ditemukan & diperbaiki |
-| **WhatsApp pairing** | `PENDING SCAN` | Menunggu konfirmasi HP setelah perbaikan |
+| WhatsApp pairing config | `VERIFIED` | Konfigurasi platform & kebijakan reconnect diperbaiki |
+| WhatsApp pairing blocker | `VERIFIED` | Server memblokir dengan **429 rate-overlimit** |
+| **WhatsApp pairing** | `BLOCKED` | Menunggu cooldown server sebelum mencoba lagi |
 | **WhatsApp live** | `NOT VERIFIED` | Adapter ada, pairing belum selesai |
 | **BaturPay live** | `NOT VERIFIED` | Adapter ada, transaksi belum |
 | Automation / BullMQ | `NOT IMPLEMENTED` | — |
@@ -172,18 +173,33 @@ Prompt saat ini inline di `src/agent/prompt.ts`. Belum ada sistem versi.
 
 ## Temuan penting (pairing)
 
-Empat akar masalah ditemukan lewat pairing langsung, bukan lewat dokumentasi:
+Akar masalah **"kode dibuat tapi tidak bisa ditautkan"** akhirnya ditemukan
+dengan menangkap frame server: **HTTP 429 `rate-overlimit`** — server
+memblokir percobaan pairing dari IP ini.
+
+Tidak ada yang bisa melihatnya dari sisi aplikasi karena
+`requestPairingCode()` memakai `sendNode()` yang hanya menulis, tanpa
+menunggu atau memeriksa balasan. Kode tetap tercetak normal walaupun server
+menolaknya.
+
+Bug lain yang ditemukan dan diperbaiki di sepanjang jalan:
 
 | Temuan | Gejala | Status |
 |---|---|---|
-| `browser[1]` bukan nama tampilan tapi **identifier tipe browser** | Server balas `400 bad-request` → kode ditolak | Diperbaiki |
+| `initAuthCreds()` terlewat | Handshake crash total | Diperbaiki |
+| `browser[1]` bukan nama tampilan tapi **identifier tipe browser** | `platformId 9` (OTHER_WEB_CLIENT) | Diperbaiki |
 | 515 (`restartRequired`) ikut di-nomina no-reconnect | Pairing sukses tapi registrasi tak pernah selesai | Diperbaiki |
 | `isNewLogin` dikirim tanpa field `connection` | Pairing sukses diam-diam dilewati | Diperbaiki |
-| `initAuthCreds()` terlewat | Handshake crash total | Diperbaiki |
+| Socket pairing umur ±2,5 menit (`QR refs attempts ended`) | Kode lama mati diam-diam | Daemon kini buat kode baru tiap reconnect |
+| Daemon retry saat 429 | Blokir server makin panjang | Diperbaiki — berhenti total |
+| `requestPairingCode()` tidak cek balasan server | Penolakan tidak pernah terlihat | Ditutup lewat pendengar frame |
 
 Rinciannya: [WHATSAPP-PAIRING.md](./WHATSAPP-PAIRING.md)
 
-12 test regresi mengunci ketiganya (`tests/unit/pairing-config.test.ts`).
+12 test regresi mengunci aturan pairing (`tests/unit/pairing-config.test.ts`).
+
+**Status: `BLOCKED`.** Perlu menunggu cooldown server (minimal 1 jam) sebelum
+percobaan berikutnya.
 
 ## Yang belum terverifikasi
 
