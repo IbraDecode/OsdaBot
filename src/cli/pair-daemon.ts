@@ -37,6 +37,12 @@ import { binaryNodeToString } from '@whiskeysockets/baileys'
 import { env } from '../config/env.js'
 import { logger } from '../observability/logger.js'
 import { BaileysProvider, maskPhone } from '../whatsapp/baileys-provider.js'
+import {
+  describeErrorCode,
+  isPairingRelevant,
+  isRateLimited,
+  parseErrorCode,
+} from './pair-frames.js'
 import { clearPairingState, writePairingState, type PairingState } from './pairing-state.js'
 
 const log = logger.child({ module: 'pairing-daemon' })
@@ -159,9 +165,7 @@ function pasangPendengarFrame(): void {
     }
 
     // Hanya yang relevan dengan pairing atau penolakan.
-    const relevan =
-      /pair-success|link_code|companion|bad-request|rate.?limit|<error|conflict|404|405|429/i.test(teks)
-    if (!relevan) return
+    if (!isPairingRelevant(teks)) return
 
     const baris = teks.split('\n').filter((b) => b.trim() && !/^\s*$/.test(b))
     console.log('')
@@ -170,21 +174,21 @@ function pasangPendengarFrame(): void {
     console.log('')
 
     // Status kegagalan yang bisa ditindaklanjuti.
-    const kode = /code="(\d{3})"/.exec(teks)?.[1]
+    //
+    // Pembacaan kode TIDAK ditulis inline di sini — dipakai dari
+    // `./pair-frames.js` supaya format kutip tunggal bisa diuji terhadap
+    // output Baileys sungguhan. Versi inline pernah salah (`code=".."`
+    // padahal Baileys mencetak `code='..'`) dan karena itu guard rate limit
+    // tidak pernah aktif.
+    const kode = parseErrorCode(teks)
     if (kode) {
-      const peta: Record<string, string> = {
-        '400': 'bad-request — companion_platform_id salah, pairing DITOLAK',
-        '404': 'not-found — nomor bot tidak dikenal server',
-        '405': 'throttling — percobaan pairing dibatasi server',
-        '429': 'rate-overlimit — percobaan pairing diblokir server',
-      }
-      state.lastError = peta[kode] ?? `server menolak (${kode})`
+      state.lastError = describeErrorCode(kode)
       simpan()
       console.log(`  >> ${state.lastError}\n`)
     }
 
     // 429 harus menghentikan segalanya, bukan memicu retry.
-    if (kode === '429' && !rateLimited) {
+    if (isRateLimited(teks) && !rateLimited) {
       rateLimited = true
       state.phase = 'rate_limited'
       state.rateLimited = true

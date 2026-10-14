@@ -52,7 +52,7 @@ const dummy = {
 }
 ```
 
-## Unit (282 test)
+## Unit (294 test)
 
 ### `tests/unit/jid.test.ts`
 
@@ -153,6 +153,21 @@ Verifikasi signature BaturPay:
 
 Test ini sengaja **menyalin** logika `getCompanionWebClientType()` dari Baileys.
 Kalau Baileys mengubah pemetaannya, test gagal — bukan diam-diam merusak pairing.
+
+### `tests/unit/pairing-frames.test.ts` (12 test)
+
+Pembacaan frame server saat pairing:
+
+- **Regresi:** membaca `code='429'` (kutip tunggal — format asli Baileys).
+- Membaca kode lain dan kutip ganda.
+- **Memverifikasi format terhadap `binaryNodeToString` Baileys sungguhan**,
+  bukan tebakan dokumentasi.
+- `isRateLimited` hanya true untuk `429`; acknowledgement `companion_hello`
+  tidak boleh salah dikira penolakan.
+
+Diverifikasi: mengembalikan regex ke versi lama (`code=".."`) membuat 4 test
+gagal. Bug ini membuat guard rate limit tidak pernah aktif, sehingga daemon
+terus mencoba dan memperpanjang blokir.
 
 ### `tests/unit/reminder-tools.test.ts` (24 test)
 

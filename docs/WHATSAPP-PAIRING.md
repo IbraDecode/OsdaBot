@@ -100,6 +100,55 @@ dipakai — permintaan pairing-nya memang ditolak di sisi server.
 
 ---
 
+## 3b. Bug kedua yang sama: guard rate limit tidak pernah aktif
+
+Yang pertama adalah `requestPairingCode()` yang tidak memeriksa balasan. Yang
+kedua lebih halus: **daemon sudah punya guard 429, tapi regex-nya salah.**
+
+```
+Versi lama:  /code="(\d{3})"/
+Format asli: <error code='429' text='rate-overlimit'/>
+                          ^^^^^^ kutip TUNGGAL
+```
+
+`binaryNodeToString` mencetak atribut dengan kutip tunggal. Regex kutip ganda
+tidak pernah cocok, jadi:
+
+- `state.rateLimited` tidak pernah menjadi `true`
+- Daemon terus meminta kode baru
+- Setiap percobaan **memperpanjang** blokir
+
+Terbukti di server ini. Setelah guard diperbaiki:
+
+| | Sebelum | Sesudah |
+|---|---|---|
+| Proses daemon | masih hidup | berhenti |
+| `attempts` | 2 (terus mencoba) | 1 |
+| `phase` | `waiting_scan` | `rate_limited` |
+
+### Perbaikan
+
+Logika pembacaan frame dipindah ke `src/cli/pair-frames.ts` supaya bisa
+diuji tanpa menjalankan socket sungguhan.
+
+Yang mengunci:
+
+- `parseErrorCode()` membaca kutip tunggal **dan** ganda.
+- Test memverifikasi format terhadap `binaryNodeToString` Baileys **sungguhan**,
+  bukan tebakan dokumentasi.
+- `isRateLimited()` hanya true untuk `429` — acknowledgement
+  `companion_hello` tidak boleh salah dikira penolakan.
+
+Diverifikasi: mengembalikan regex ke versi lama membuat **4 test gagal**.
+
+### Pelajaran
+
+Test yang menyalin logika ke dalam file test menguji **salinan**, bukan kode
+yang jalan. Versi pertama test ini justru menyalin `parseErrorCode` ke dalam
+test — dan tidak akan pernah menangkap bug ini. Modulnya harus diekstrak.
+
+---
+
 ## 4. Riwayat diagnosis yang salah (dicatat supaya tidak diulang)
 
 | Dugaan | Kenyataan |
@@ -165,15 +214,18 @@ Aturan yang tidak boleh dilanggar:
 
 ## 7. Kalau masih kena 429
 
-1. Berhenti total. Jangan jalankan apa pun yang menyentuh pairing.
-2. Tunggu minimal 1 jam; beberapa jam lebih aman.
-3. Pastikan tidak ada proses pairing lain yang masih hidup:
+1. **Cek `pnpm osda:pair:code` lebih dulu.** Kalau sudah keluar dari
+   `rate_limited`, jangan jalankan apa pun — pemeriksaannya sudah menyentuh
+   server.
+2. Berhenti total. Jangan jalankan apa pun yang menyentuh pairing.
+3. Tunggu minimal 1 jam; beberapa jam lebih aman.
+4. Pastikan tidak ada proses pairing lain yang masih hidup:
 
    ```bash
    ps -eo pid,args | grep src/cli/pair
    ```
 
-4. Setelah cooldown, jalankan **satu** daemon dan langsung masukkan kodenya.
+5. Setelah cooldown, jalankan **satu** daemon dan langsung masukkan kodenya.
 
 Kalau setelah cooldown masih `429`, penyebabnya bukan frekuensi — periksa
 apakah ada proses lain di server atau jaringan yang ikut memakai pairing.

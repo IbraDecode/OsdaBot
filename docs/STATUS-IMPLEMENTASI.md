@@ -31,7 +31,7 @@ Status memakai lima tingkat:
 | CLI | `IMPLEMENTED` | 10 perintah, membaca data nyata |
 | WhatsApp handshake | `VERIFIED` | Noise handshake berhasil, QR & pairing code dibuat |
 | WhatsApp pairing config | `VERIFIED` | Konfigurasi platform & kebijakan reconnect diperbaiki |
-| WhatsApp pairing blocker | `VERIFIED` | Server memblokir dengan **429 rate-overlimit** |
+| WhatsApp pairing blocker | `VERIFIED` | 429 rate-overlimit; guard sudah terbukti berfungsi |
 | **WhatsApp pairing** | `BLOCKED` | Menunggu cooldown server sebelum mencoba lagi |
 | **WhatsApp live** | `NOT VERIFIED` | Adapter ada, pairing belum selesai |
 | **BaturPay live** | `NOT VERIFIED` | Adapter ada, transaksi belum |
@@ -115,10 +115,10 @@ Setiap perintah **membaca kondisi nyata** dari database dan provider.
 
 | Yang diukur | Nilai |
 |---|---|
-| Test unit | 282 lulus |
+| Test unit | 294 lulus |
 | Test integrasi | 35 lulus |
 | Test live | 10 lulus (dengan `RUN_LIVE_TESTS=true`) |
-| **Total** | **308 lulus, 0 gagal** |
+| **Total** | **320 lulus, 0 gagal** |
 | Tool terdaftar | 15 |
 | Skill termuat | 3 |
 | Permission | 50 |
