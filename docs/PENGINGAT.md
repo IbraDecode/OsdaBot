@@ -99,7 +99,59 @@ memblokir pengingat organisasi lain dengan isi sama.
 
 ---
 
-## 6. Perintah
+## 6. Tool untuk AI
+
+| Tool | Permission | Risiko | Perlu persetujuan |
+|---|---|---|---|
+| `reminder.create` | `automation.create` | LOW | Tidak |
+| `reminder.list` | `automation.read` | LOW | Tidak |
+| `reminder.cancel` | `automation.cancel` | MEDIUM | **Ya** |
+
+`reminder.cancel` butuh persetujuan karena pembatalan bisa salah paham dan
+tidak bisa dibatalkan. `reminder.create` tidak — pesannya baru dikirim saat
+waktunya tiba, jadi tidak ada yang terkirim seketika.
+
+### Destinasi tidak pernah dari model
+
+```
+chatJid ← context.chatJid   (chat tempat perintah datang)
+```
+
+Kalau model boleh menentukan tujuan, ia bisa membuat bot mengirim ke chat mana
+pun. Untuk pengingat grup, `toGroupTitle` dicocokkan **hanya di dalam grup
+organisasi itu**, dan kalau lebih dari satu cocok, hasilnya ambigu — bukan
+salah pilih.
+
+### Zona waktu
+
+Model mengirim waktu absolut tanpa zona waktu:
+
+```
+scheduledAt: "2026-10-20T09:00:00"
+```
+
+Ditafsirkan sebagai waktu **lokal zona organisasi**. Kalau dipakai
+`new Date(string)` biasa, hasilnya memakai zona waktu server — bisa meleset 8
+jam, dan tidak ada yang tahu sampai pengingat tiba di waktu yang salah.
+
+Terverifikasi dengan angka:
+
+```
+09:00 Asia/Makassar -> 01:00Z
+09:00 Asia/Jakarta  -> 02:00Z
+09:00 UTC           -> 09:00Z
+00:30 Asia/Makassar -> 19 Oct 16:30Z   ← bergeser HARI, bukan cuma jam
+```
+
+Kasus tengah malam yang bergeser hari adalah yang paling rawan, karena
+salahnya tidak terlihat dari jamnya saja.
+
+Format yang tidak lengkap (`"besok jam 9"`, `"20-10-2026"`) **ditolak** —
+bukan ditebak.
+
+---
+
+## 7. Perintah
 
 ```bash
 pnpm osda reminder:list --slug=osis-sma-1
@@ -112,7 +164,7 @@ memastikan worker benar-benar terkoneksi.
 
 ---
 
-## 7. Verifikasi
+## 8. Verifikasi
 
 Dijalankan terhadap database Neon sungguhan:
 
@@ -126,12 +178,21 @@ IDEMPOTENSI    : BERHASIL (tidak duplikat)
 KLAIM_KEDUA    : 0        (job yang sama tidak bisa diklaim dua kali)
 ```
 
+Tool AI diuji langsung ke database Neon:
+
+```
+BUAT         : Pengingat dijadwalkan untuk 17 Okt 2026, 01.00.
+DUPLIKAT     : true      (panggilan kedua tidak membuat baris kedua)
+LIST         : 1 pengingat akan dikirim.
+BATAL SEMUA  : 1 pengingat dibatalkan.
+WAKTU_LALU   : ditolak -> Waktu pengingat sudah lewat.
+FORMAT_JAHAN : ditolak -> Format waktu harus YYYY-MM-DDTHH:MM
+```
+
 ---
 
-## 8. Yang belum ada
+## 9. Yang belum ada
 
-- **Tool untuk AI.** `CAPABILITIES` masih menandai "Jadwal & Pengingat" sebagai
-  `planned`. Belum ada `reminder.create` / `reminder.cancel`.
 - **Pengingat berulang** (harian, mingguan). Saat ini satu kali.
 - **Peringatan lebih awal untuk pengingat yang akan datang** (misal 10 menit sebelum).
 - **Belum diuji lewat WhatsApp nyata** — pairing masih terblokir `429

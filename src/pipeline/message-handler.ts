@@ -18,6 +18,7 @@ import type { WhatsAppProvider } from '../whatsapp/types.js'
 import { parseJid } from '../whatsapp/jid.js'
 import { buildAttendanceTools } from '../tools/attendance-tools.js'
 import { buildOrganizationTools } from '../tools/organization-tools.js'
+import { buildReminderTools } from '../tools/reminder-tools.js'
 import { prismaForRegistry } from '../bootstrap.js'
 import type { ToolRegistry } from '../tools/registry.js'
 import type { MessagePipeline } from './message-pipeline.js'
@@ -30,7 +31,7 @@ const CAPABILITIES: Array<{ name: string; description: string; status: string }>
   { name: 'Anggota', description: 'Cari dan lihat data anggota organisasi.', status: 'enabled' },
   { name: 'Pengumuman & Undangan', description: 'Susun draf pengumuman atau undangan resmi.', status: 'enabled' },
   { name: 'Kirim pesan', description: 'Kirim pesan WhatsApp setelah kamu setujui.', status: 'enabled' },
-  { name: 'Jadwal & Pengingat', description: 'Buat pengingat terjadwal.', status: 'planned' },
+  { name: 'Jadwal & Pengingat', description: 'Buat, lihat, dan batalkan pengingat terjadwal.', status: 'enabled' },
   { name: 'Keuangan', description: 'Catatan kas dan tagihan.', status: 'planned' },
   { name: 'Dokumen (PDF/DOCX)', description: 'Buat berkas PDF atau Word.', status: 'planned' },
 ]
@@ -66,6 +67,12 @@ export class MessageHandler {
     this.deps.tools.registerAll(buildAttendanceTools({ attendance: this.deps.attendance, identity: this.deps.identity }) as never)
     this.deps.tools.registerAll(
       buildOrganizationTools({ prisma: prismaForRegistry(this.deps.tools), whatsapp: this.deps.whatsapp }) as never,
+    )
+    this.deps.tools.registerAll(
+      buildReminderTools({
+        prisma: prismaForRegistry(this.deps.tools),
+        reminders: this.deps.reminders,
+      }) as never,
     )
     log.info({ tools: this.deps.tools.names().length }, 'tool terdaftar')
   }

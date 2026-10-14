@@ -52,7 +52,7 @@ const dummy = {
 }
 ```
 
-## Unit (258 test)
+## Unit (282 test)
 
 ### `tests/unit/jid.test.ts`
 
@@ -153,6 +153,19 @@ Verifikasi signature BaturPay:
 
 Test ini sengaja **menyalin** logika `getCompanionWebClientType()` dari Baileys.
 Kalau Baileys mengubah pemetaannya, test gagal — bukan diam-diam merusak pairing.
+
+### `tests/unit/reminder-tools.test.ts` (24 test)
+
+- **Zona waktu terverifikasi dengan angka**: 09:00 Makassar → 01:00Z,
+  09:00 Jakarta → 02:00Z, 09:00 UTC → 09:00Z.
+- **Tengah malam bergeser hari**: 00:30 Makassar → 19 Oct 16:30Z.
+- Format waktu tidak lengkap **ditolak**, bukan ditebak.
+- **`chatJid` berasal dari konteks**, bukan dari input model.
+- Grup yang tidak tertaut ke organisasi → ditolak.
+- **Beberapa grup cocok → ambigu**, bukan dipilih salah satu.
+- Pengingat di masa lalu / terlalu jauh → ditolak.
+- `reminder.cancel` memblokir pengingat organisasi lain.
+- Semua tool punya permission; `cancel` selalu butuh persetujuan.
 
 ### `tests/unit/reminders.test.ts` (22 test)
 

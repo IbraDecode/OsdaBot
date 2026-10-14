@@ -115,10 +115,10 @@ Setiap perintah **membaca kondisi nyata** dari database dan provider.
 
 | Yang diukur | Nilai |
 |---|---|
-| Test unit | 258 lulus |
+| Test unit | 282 lulus |
 | Test integrasi | 35 lulus |
 | Test live | 10 lulus (dengan `RUN_LIVE_TESTS=true`) |
-| **Total** | **284 lulus, 0 gagal** |
+| **Total** | **308 lulus, 0 gagal** |
 | Tool terdaftar | 15 |
 | Skill termuat | 3 |
 | Permission | 50 |
@@ -191,7 +191,7 @@ Detail: [PERSETUJUAN.md](./PERSETUJUAN.md)
 | `ReminderWorker` | `VERIFIED` | `failed` tidak dihitung sukses |
 | Integritas database | `VERIFIED` | 3 skenario diuji ke Neon |
 | CLI `reminder:*` | `IMPLEMENTED` | list / cancel / tick |
-| Tool jadwal untuk AI | **Belum ada** | `CAPABILITIES` masih menandai "planned" |
+| Tool jadwal untuk AI | `VERIFIED` | 3 tool; parsing zona waktu diuji |
 | BullMQ | **Tidak dipakai** | Penjelasan di bawah |
 
 Detail: [PENGINGAT.md](./PENGINGAT.md)
