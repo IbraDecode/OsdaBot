@@ -52,7 +52,7 @@ const dummy = {
 }
 ```
 
-## Unit (190 test)
+## Unit (211 test)
 
 ### `tests/unit/jid.test.ts`
 
@@ -153,6 +153,19 @@ Verifikasi signature BaturPay:
 
 Test ini sengaja **menyalin** logika `getCompanionWebClientType()` dari Baileys.
 Kalau Baileys mengubah pemetaannya, test gagal — bukan diam-diam merusak pairing.
+
+### `tests/unit/provisioning.test.ts` (21 test)
+
+Provisioning organisasi — perintah yang memberi akses ke data organisasi:
+
+- Slug: huruf turun, slug kosong ditolak, panjang dibatasi.
+- Nomor telepon: hanya digits + kode negara; `+`, spasi, kurung dibuang.
+- **Nomor tidak valid ditolak SEBELUM menyentuh database.**
+- `verifiedAt` **tidak pernah** diisi provisioning — nomor di environment adalah
+  klaim, bukan bukti.
+- **Idempoten:** nomor sama dua kali tidak membuat anggota/peran/alias ganda.
+- Peran yang tidak dikenal ditolak.
+- Permission peran **dihapus lalu dibuat ulang**, bukan ditumpuk.
 
 ### `tests/unit/approval-gate.test.ts` (6 test)
 

@@ -12,6 +12,8 @@
  *   pnpm osda whatsapp:status   — status koneksi WhatsApp
  *   pnpm osda whatsapp:qr       — tampilkan QR (butuh server jalan)
  *   pnpm osda org:list          — daftar organisasi
+ *   pnpm osda org:create        — buat organisasi nyata + hubungkan nomor admin
+ *   pnpm osda org:show          — detail organisasi (anggota, nomor, peran)
  *   pnpm osda db:seed           — isi data contoh
  */
 
@@ -21,6 +23,7 @@ import { checkDatabaseHealth, prisma } from '../database/client.js'
 import { logger } from '../observability/logger.js'
 import { listSessionFiles } from '../whatsapp/session-store.js'
 import { maskPhone } from '../whatsapp/baileys-provider.js'
+import { OrganizationProvisioner } from '../organization/provisioning.js'
 import { MessageHandler } from '../pipeline/message-handler.js'
 
 const log = logger.child({ module: 'cli' })
@@ -35,6 +38,35 @@ const commands = new Map<string, Command>()
 
 function register(name: string, description: string, run: () => Promise<void>): void {
   commands.set(name, { name, description, run })
+}
+
+/**
+ * Parse argumen `--key=value` dan `--key value`.
+ *
+ * Tanpa parser, setiap perintah akan menurunkan variabel ad-hoc sendiri.
+ */
+export function parseArgs(argv: string[]): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (let i = 0; i < argv.length; i += 1) {
+    const token = argv[i]
+    if (!token?.startsWith('--')) continue
+
+    const body = token.slice(2)
+    const sama = body.indexOf('=')
+    if (sama !== -1) {
+      out[body.slice(0, sama)] = body.slice(sama + 1).replace(/^["']|["']$/g, '')
+      continue
+    }
+
+    const next = argv[i + 1]
+    if (next && !next.startsWith('--')) {
+      out[body] = next.replace(/^["']|["']$/g, '')
+      i += 1
+    } else {
+      out[body] = 'true'
+    }
+  }
+  return out
 }
 
 /** Bungkus garis agar rapi di terminal sempit. */
@@ -188,6 +220,121 @@ register('org:list', 'Daftar organisasi yang terdaftar', async () => {
   )
 
   box(`ORGANISASI (${organizations.length})`, lines.length > 0 ? lines : ['(belum ada organisasi)'])
+  await prisma.$disconnect()
+})
+
+register('org:create', 'Buat organisasi sungguhan + hubungkan nomor admin', async () => {
+  const args = parseArgs(process.argv.slice(3))
+  const nama = args.name
+  const adminNama = args['admin-name']
+  const adminTelepon = args['admin-phone'] ?? env.WHATSAPP_ADMIN_PHONE
+
+  if (!nama) {
+    console.error('Wajib: --name="Nama Organisasi"')
+    console.error('Disarankan: --admin-name="Nama Admin" --admin-phone=628xxxxxxxxx')
+    console.error('')
+    console.error('Contoh:')
+    console.error('  pnpm osda org:create --name="OSIS SMA 1" \\')
+    console.error('    --admin-name="Budi Santoso" --admin-phone=6285792820173')
+    await prisma.$disconnect()
+    process.exit(1)
+  }
+
+  if (!adminNama || !adminTelepon) {
+    console.error('Wajib: --admin-name dan --admin-phone.')
+    console.error('Tanpa itu organisasi akan ada, tapi tidak ada yang bisa memakainya.')
+    console.error('WHATSAPP_ADMIN_PHONE di env dipakai sebagai nilai bawaan.')
+    await prisma.$disconnect()
+    process.exit(1)
+  }
+
+  const provisioner = new OrganizationProvisioner(prisma as never)
+  await provisioner.ensurePermissions()
+
+  const org = await provisioner.createOrganization({
+    name: nama,
+    ...(args.slug ? { slug: args.slug } : {}),
+    ...(args.timezone ? { timezone: args.timezone } : {}),
+  })
+
+  const link = await provisioner.linkAdmin({
+    organizationId: org.id,
+    fullName: adminNama,
+    phone: adminTelepon,
+    ...(args.role ? { roleKey: args.role } : {}),
+  })
+
+  const ringkasan = await provisioner.describe(org.id)
+
+  box('ORGANISASI DIBUAT', [
+    `Nama        : ${ringkasan.name}`,
+    `Slug        : ${ringkasan.slug}`,
+    `Zona waktu  : ${ringkasan.timezone}`,
+    `Anggota     : ${ringkasan.memberCount}`,
+    `Peran       : ${ringkasan.roleCount}`,
+    '',
+    `Admin       : ${adminNama} (${maskPhone(adminTelepon)})`,
+    `Peran admin : ${link.roleKey}`,
+    `Status      : ${link.created ? 'nomor baru ditautkan' : 'nomor sudah ada, diperbarui'}`,
+  ])
+
+  console.log('')
+  console.log('  Catatan:')
+  console.log('  - Nomor admin sudah terhubung, jadi begitu bot hidup dia langsung')
+  console.log('    bisa dipakai tanpa onboarding manual.')
+  console.log('  - Tautan identitas BELUM ditandai terverifikasi. Itu disengaja:')
+  console.log('    nomor di environment adalah klaim, belum bukti.')
+  console.log('  - Periksa hasilnya dengan: pnpm osda org:show --slug=' + org.slug)
+  console.log('')
+  await prisma.$disconnect()
+})
+
+register('org:show', 'Tampilkan detail organisasi (anggota, nomor, peran)', async () => {
+  const args = parseArgs(process.argv.slice(3))
+  // Tanpa --slug/--id, pakai satu-satunya organisasi yang ada. Kalau lebih
+  // dari satu, memilih diam-diam bisa menampilkan detail organisasi yang
+  // salah — itu informasi yang tidak seharusnya bocor.
+  let identifier = args.slug ?? args.id ?? null
+  if (!identifier) {
+    const semua = await prisma.organization.findMany({ select: { slug: true } })
+    if (semua.length === 1) identifier = semua[0]!.slug
+    else if (semua.length === 0) {
+      console.error('Belum ada organisasi. Jalankan: pnpm osda org:create --name="..." --admin-name="..." --admin-phone=...')
+    }
+  }
+
+  if (!identifier) {
+    console.error('Pakai --slug=... atau --id=...')
+    await prisma.$disconnect()
+    process.exit(1)
+  }
+
+  const provisioner = new OrganizationProvisioner(prisma as never)
+  const org = await prisma.organization.findFirst({
+    where: typeof identifier === 'string' && identifier.includes('-') && identifier.length === 36
+      ? { id: identifier }
+      : { slug: identifier },
+    select: { id: true },
+  })
+
+  if (!org) {
+    console.error(`Organisasi "${identifier}" tidak ditemukan.`)
+    await prisma.$disconnect()
+    process.exit(1)
+  }
+
+  const detail = await provisioner.describe(org.id)
+  const lines = detail.linkedPhones.map(
+    (item) => `${item.name}\n    ${maskPhone(item.phone)} | peran: ${item.roles.join(', ') || '(tanpa peran)'}${item.verified ? '' : ' | BELUM diverifikasi'}`,
+  )
+
+  box(`${detail.name} (${detail.slug})`, [
+    `Zona waktu : ${detail.timezone}`,
+    `Anggota    : ${detail.memberCount}`,
+    `Peran      : ${detail.roleCount}`,
+    '',
+    ...lines,
+  ])
   await prisma.$disconnect()
 })
 

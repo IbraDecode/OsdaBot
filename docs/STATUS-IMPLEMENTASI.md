@@ -115,10 +115,10 @@ Setiap perintah **membaca kondisi nyata** dari database dan provider.
 
 | Yang diukur | Nilai |
 |---|---|
-| Test unit | 190 lulus |
+| Test unit | 211 lulus |
 | Test integrasi | 35 lulus |
 | Test live | 10 lulus (dengan `RUN_LIVE_TESTS=true`) |
-| **Total** | **216 lulus, 0 gagal** |
+| **Total** | **237 lulus, 0 gagal** |
 | Tool terdaftar | 15 |
 | Skill termuat | 3 |
 | Permission | 50 |
@@ -182,6 +182,18 @@ Prompt saat ini inline di `src/agent/prompt.ts`. Belum ada sistem versi.
 | Lewat WhatsApp nyata | `NOT VERIFIED` | Pairing masih terblokir 429 |
 
 Detail: [PERSETUJUAN.md](./PERSETUJUAN.md)
+
+## Provisioning organisasi
+
+| Komponen | Status | Catatan |
+|---|---|---|
+| `org:create` / `org:show` | `VERIFIED` | Dijalankan 2x ke DB sungguhan |
+| Rantai izin (RBAC) | `VERIFIED` | Owner mendapat 50/50 permission |
+| Idempotensi | `VERIFIED` | Anggota/peran tidak ganda |
+| `verifiedAt` dikosongkan | `VERIFIED` | Keamanan: nomor env = klaim, bukan bukti |
+| Onboarding anggota non-admin | **Belum ada** | Hanya `linkAdmin` |
+
+Detail: [PROVISIONING.md](./PROVISIONING.md)
 
 ## Temuan penting (pairing)
 
