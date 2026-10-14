@@ -115,10 +115,10 @@ Setiap perintah **membaca kondisi nyata** dari database dan provider.
 
 | Yang diukur | Nilai |
 |---|---|
-| Test unit | 294 lulus |
+| Test unit | 309 lulus |
 | Test integrasi | 35 lulus |
 | Test live | 10 lulus (dengan `RUN_LIVE_TESTS=true`) |
-| **Total** | **320 lulus, 0 gagal** |
+| **Total** | **335 lulus, 0 gagal** |
 | Tool terdaftar | 15 |
 | Skill termuat | 3 |
 | Permission | 50 |
@@ -182,6 +182,19 @@ Prompt saat ini inline di `src/agent/prompt.ts`. Belum ada sistem versi.
 | Lewat WhatsApp nyata | `NOT VERIFIED` | Pairing masih terblokir 429 |
 
 Detail: [PERSETUJUAN.md](./PERSETUJUAN.md)
+
+## Outbox
+
+| Komponen | Status | Catatan |
+|---|---|---|
+| `OutboxWriter` | `VERIFIED` | Event ditulis dalam transaksi yang sama |
+| `OutboxDispatcher` | `VERIFIED` | Klaim tunggal, backoff, batas percobaan |
+| Penanganan `unknown` | `VERIFIED` | Tidak pernah di-retry — perlu rekonsiliasi |
+| Pemulihan `SENDING` | `VERIFIED` | Lease lewat `availableAt`, jadi `UNKNOWN` |
+| CLI `outbox:*` | `IMPLEMENTED` | list / tick |
+| Penulis event di layanan | **Belum ada** | Pengiriman masih langsung |
+
+Detail: [OUTBOX.md](./OUTBOX.md)
 
 ## Pengingat terjadwal
 

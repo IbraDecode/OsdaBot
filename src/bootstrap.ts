@@ -19,6 +19,8 @@ import { logger } from './observability/logger.js'
 import { MessageHandler } from './pipeline/message-handler.js'
 import { ReminderWorker } from './queue/reminder-worker.js'
 import { ReminderService } from './reminders/service.js'
+import { OutboxDispatcher } from './outbox/dispatcher.js'
+import { WhatsAppOutboxHandler } from './outbox/handlers.js'
 import { MessagePipeline } from './pipeline/message-pipeline.js'
 import { SkillRegistry } from './skills/registry.js'
 import { AuthorizationService } from './security/authorization.js'
@@ -40,6 +42,7 @@ export interface Application {
   agent: AgentRuntime
   reminders: ReminderService
   reminderWorker: ReminderWorker
+  outbox: OutboxDispatcher
   pipeline: MessagePipeline
   handler: MessageHandler
   whatsapp: WhatsAppProvider
@@ -114,6 +117,10 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<Applica
   const reminders = new ReminderService(prisma)
   const reminderWorker = new ReminderWorker({ prisma, whatsapp })
 
+  // --- Lapis outbox --------------------------------------------------------
+  const outbox = new OutboxDispatcher(prisma)
+  outbox.register(new WhatsAppOutboxHandler({ prisma, whatsapp }))
+
   const handler = new MessageHandler({
     pipeline,
     identity,
@@ -140,12 +147,21 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<Applica
 
   if (options.startWorkers !== false) {
     reminderWorker.start()
+    outbox.start()
+
+    // Event yang tersisa di SENDING berarti proses sebelumnya mati saat
+    // mengirim. Hasilnya tidak diketahui — dipindahkan ke UNKNOWN supaya
+    // diperiksa manusia, BUKAN dikirim ulang.
+    void outbox.recoverStuckSending().catch((error: unknown) => {
+      log.warn({ err: error }, 'gagal memulihkan event outbox yang menggantung')
+    })
   }
 
   const shutdown = async (): Promise<void> => {
     log.info('mematikan aplikasi')
     clearInterval(expiryTimer)
     await reminderWorker.stop()
+    await outbox.stop()
     try {
       await whatsapp.disconnect()
     } catch (error) {
@@ -169,6 +185,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<Applica
     agent,
     reminders,
     reminderWorker,
+    outbox,
     pipeline,
     handler,
     whatsapp,

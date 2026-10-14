@@ -52,7 +52,7 @@ const dummy = {
 }
 ```
 
-## Unit (294 test)
+## Unit (309 test)
 
 ### `tests/unit/jid.test.ts`
 
@@ -153,6 +153,18 @@ Verifikasi signature BaturPay:
 
 Test ini sengaja **menyalin** logika `getCompanionWebClientType()` dari Baileys.
 Kalau Baileys mengubah pemetaannya, test gagal — bukan diam-diam merusak pairing.
+
+### `tests/unit/outbox.test.ts` (15 test)
+
+- Pemetaan status provider: hanya `failed` yang jadi `failed`.
+- **`unknown`/`pending`/`sending` → `unknown`, TIDAK di-retry.** Ini inti modul.
+- Handler yang melempar error → retry dengan backoff.
+- Melebihi batas percobaan → `FAILED` dan **tidak dihapus**.
+- Topik tanpa handler → ditunda, **tidak di-drop**.
+- Hanya satu dispatcher bisa mengambil satu event.
+- `recoverStuckSending` memindahkan event ber-lease habis ke `UNKNOWN`, bukan
+  mengirim ulang.
+- `needReconciliation` mengumpulkan `UNKNOWN` + `FAILED`.
 
 ### `tests/unit/pairing-frames.test.ts` (12 test)
 

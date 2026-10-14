@@ -19,6 +19,8 @@
  *   pnpm osda reminder:list     — daftar pengingat terjadwal
  *   pnpm osda reminder:cancel   — batalkan semua pengingat
  *   pnpm osda reminder:tick     — jalankan worker sekali
+ *   pnpm osda outbox:list        — event yang perlu rekonsiliasi
+ *   pnpm osda outbox:tick        — jalankan dispatcher sekali
  *   pnpm osda db:seed           — isi data contoh
  */
 
@@ -564,6 +566,45 @@ register('reminder:tick', 'Jalankan satu siklus worker pengingat sekarang', asyn
     process.exit(1)
   }
 
+  await prisma.$disconnect()
+})
+
+register('outbox:list', 'Tampilkan event outbox yang perlu rekonsiliasi', async () => {
+  const { OutboxDispatcher } = await import('../outbox/dispatcher.js')
+  const dispatcher = new OutboxDispatcher(prisma as never)
+
+  const daftar = await dispatcher.needReconciliation(30)
+
+  box(`OUTBOX — PERLU REKONSILIASI (${daftar.length})`, [
+    ...daftar.map((item) =>
+      `${item.status} | ${item.topic} | percobaan ${item.attempts}\n    ${item.lastError ?? '(tanpa catatan)'}`,
+    ),
+    ...(daftar.length === 0
+      ? ['(semua event selesai)']
+      : []),
+    '',
+    'UNKNOWN = mungkin sudah terkirim, jangan dikirim ulang tanpa dicek.',
+    'FAILED  = sudah menyerah setelah batas percobaan.',
+  ])
+  await prisma.$disconnect()
+})
+
+register('outbox:tick', 'Jalankan satu siklus dispatcher outbox', async () => {
+  const { OutboxDispatcher } = await import('../outbox/dispatcher.js')
+  const { WhatsAppOutboxHandler } = await import('../outbox/handlers.js')
+  const { BaileysProvider } = await import('../whatsapp/baileys-provider.js')
+
+  const dispatcher = new OutboxDispatcher(prisma as never)
+  dispatcher.register(new WhatsAppOutboxHandler({ prisma: prisma as never, whatsapp: new BaileysProvider() }))
+
+  const hasil = await dispatcher.tick()
+  console.log('')
+  console.log(`  Diproses    : ${hasil.diproses}`)
+  console.log(`  Terkirim   : ${hasil.terkirim}`)
+  console.log(`  Gagal      : ${hasil.gagal}`)
+  console.log(`  Tidak pasti: ${hasil.unknown}`)
+  console.log(`  Tanpa handler: ${hasil.tanpaHandler}`)
+  console.log('')
   await prisma.$disconnect()
 })
 
