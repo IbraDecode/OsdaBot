@@ -93,6 +93,58 @@ describe('membuat dokumen', () => {
     expect(kedua.documentNumber).not.toBe(pertama.documentNumber)
   })
 
+  it('BUG REGRESSION: nomor HARUS berbeda walau jenisnya berbeda', async () => {
+    // Surat izin dan surat tugas berbagi prefix `SURAT`, dan penomoran unik per
+    // organisasi. Kalau masing-masing jenis menghitung dari nol, keduanya
+    // menghasilkan `SURAT/2026/001` — dua dokumen resmi dengan identitas sama.
+    //
+    // Bug ini tersembunyi selama constraint UNIQUE belum ada: keduanya
+    // tersimpan dengan nomor kembar dan tidak ada yang menyadarinya.
+    const nomor: string[] = []
+    for (const template of ['surat_izin', 'surat_tugas', 'surat_izin', 'surat_tugas'] as const) {
+      const dibuat = await service.create({
+        ...dasar,
+        template,
+        subjectName: 'Budi Santoso',
+        reason: 'Keterangan',
+      })
+      nomor.push(dibuat.documentNumber)
+    }
+
+    expect(new Set(nomor).size, `nomor kembar: ${nomor.join(', ')}`).toBe(4)
+  })
+
+  it('BUG REGRESSION: constraint UNIQUE mencegah nomor kembar di level database', async () => {
+    // Lapisan aplikasi bisa salah. Lapisan database tidak bisa ditawar.
+    const sudah = await service.create({
+      ...dasar,
+      template: 'surat_izin',
+      subjectName: 'Budi Santoso',
+      reason: 'Keterangan',
+    })
+
+    await expect(
+      prisma.documentRecord.create({
+        data: {
+          organizationId: ORG,
+          title: 'Paksa Nomor Kembar',
+          documentType: 'surat_izin',
+          format: 'pdf',
+          documentNumber: sudah.documentNumber,
+        },
+      }),
+    ).rejects.toThrow()
+
+    // Dan nomor berikutnya tetap benar setelah percobaan yang gagal itu.
+    const berikutnya = await service.create({
+      ...dasar,
+      template: 'surat_izin',
+      subjectName: 'Siti Aminah',
+      reason: 'Keterangan',
+    })
+    expect(berikutnya.documentNumber).not.toBe(sudah.documentNumber)
+  })
+
   it('BUG REGRESSION: nomor berbeda per jenis dokumen', async () => {
     // Izin dan tugas adalah dua jenis surat, bukan satu rangkaian nomor.
     const izin = await service.create({

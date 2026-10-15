@@ -20,7 +20,7 @@
 import { z } from 'zod'
 import { ToolError, type ToolDefinition, type ToolExecutionContext } from './types.js'
 import { PERMISSIONS } from '../security/permissions.js'
-import { type BaturPayAdapter } from '../payments/baturpay.js'
+import { PaymentBusyError, type BaturPayAdapter } from '../payments/baturpay.js'
 import type { PaymentStatus } from '@prisma/client'
 import { formatAmount, parseAmount } from '../finance/service.js'
 import type { IdentityEngine } from '../identity/resolver.js'
@@ -111,9 +111,40 @@ export function buildPaymentTools(deps: PaymentToolsDeps): Array<ToolDefinition<
         if (resolution.certainty === 'unique') customerName = resolution.memberName
       }
 
-      // `orderId` adalah kunci idempotensi BaturPay — duplikat ditolak `409
-      // ORDER_EXISTS`. ObjectId tagihan ikut disertakan supaya order bisa
-      // dikaitkan kembali ke tagihannya.
+      // ── Idempotensi ───────────────────────────────────────────────────────
+      //
+      // Kunci diturunkan dari tagihan + nominal + menit berjalan, BUKAN acak.
+      //
+      // Kunci acak membuat setiap percobaan berbeda, sehingga percobaan ulang
+      // setelah kegagalan membuat QRIS kedua untuk tagihan yang sama — dua
+      // permintaan transfer untuk satu tagihan, dan orang tidak tahu mana
+      // yang benar.
+      //
+      // Kunci berbasis waktu punya batas: kalau charge gagal lalu dicoba lagi
+      // satu menit kemudian, kunci baru dan charge kedua memang terjadi.
+      // Itu trade-off yang diterima, dan lebih baik daripada charge ganda dalam
+      // hitungan detik.
+      const bucketMenit = Math.floor(Date.now() / 60_000)
+      const idempotencyKey = `${input.invoiceId}:${diminta}:${bucketMenit}`
+
+      // Kalau masih ada QRIS yang menunggu pada tagihan ini, jangan buat yang
+      // kedua. Dua QRIS untuk satu tagihan membuat penerima bingung dan bisa
+      // menghasilkan pembayaran ganda.
+      const menunggu = await payments.listPayments(organizationId, {
+        status: 'PENDING',
+        limit: 50,
+      })
+      const bentrok = menunggu.find(
+        (row) => row.invoiceNumber === tagihan.number && row.amount === diminta,
+      )
+      if (bentrok) {
+        throw new ToolError(
+          'CONFLICT',
+          `Sudah ada permintaan pembayaran Rp ${formatAmount(diminta)} yang masih menunggu pada tagihan ${tagihan.number}. ` +
+            'Jangan buat QRIS kedua — cek statusnya dulu, atau tunggu sampai kedaluwarsa.',
+        )
+      }
+
       const orderId = `OSDA-${input.invoiceId.replace(/-/g, '').slice(0, 12)}-${Date.now().toString(36).toUpperCase()}`
 
       const hasil = await payments.createCharge({
@@ -137,13 +168,24 @@ export function buildPaymentTools(deps: PaymentToolsDeps): Array<ToolDefinition<
         throw new ToolError(kode, `${hasil.error} (kode: ${hasil.code})`)
       }
 
-      const payment = await payments.recordPayment({
-        organizationId,
-        invoiceId: tagihan.id,
-        amount: hasil.amount,
-        orderId: hasil.orderId,
-        qrisUrl: hasil.qrisUrl,
-      })
+      let payment: { id: string; duplikat: boolean }
+      try {
+        payment = await payments.recordPayment({
+          organizationId,
+          invoiceId: tagihan.id,
+          amount: hasil.amount,
+          orderId: hasil.orderId,
+          qrisUrl: hasil.qrisUrl,
+          idempotencyKey,
+        })
+      } catch (error) {
+        // Percobaan lain sedang jalan untuk operasi yang sama. Itu bukan
+        // kegagalan — jawabannya sudah ada, tinggal belum selesai.
+        if (error instanceof PaymentBusyError) {
+          throw new ToolError('CONFLICT', error.message)
+        }
+        throw error
+      }
 
       return {
         paymentId: payment.id,
@@ -153,6 +195,7 @@ export function buildPaymentTools(deps: PaymentToolsDeps): Array<ToolDefinition<
         amountText: `Rp ${formatAmount(hasil.amount)}`,
         qrisUrl: hasil.qrisUrl,
         expiryTime: hasil.expiryTime,
+        reusedPayment: payment.duplikat,
         message:
           `QRIS untuk tagihan ${tagihan.number} sudah dibuat: Rp ${formatAmount(hasil.amount)}. ` +
           'Kirim link QR-nya ke anggota. Pembayaran baru dianggap sah setelah penyedia mengonfirmasi — jangan menyatakan sudah masuk.',

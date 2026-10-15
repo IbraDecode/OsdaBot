@@ -121,14 +121,14 @@ Kalau audit ini tidak bisa gagal, ia tidak berguna.
 
 Yang **tidak** bisa diselesaikan dengan menulis dokumentasi:
 
-| Utang | Dampak |
-|---|---|
-| Sistem tugas belum ada | Tidak ada penugasan, tenggat, atau dependensi tugas. |
-| `IdempotencyKey` belum dipakai | Nomor dokumen bisa bentrok saat bersamaan. |
-| `WorkflowRun` belum dipakai | Tidak ada alur kerja otomatis. |
-| Monitoring belum ada | Tidak ada deteksi untuk percakapan yang memburuk. |
-| `system.safe_mode` tidak ada mekanismenya | Tidak ada tombol darurat saat ada gangguan. |
-| Tautan grup hanya CLI | Admin harus ke terminal; bot yang belum tertaut diam. |
+| Utang | Dampak | Status |
+|---|---|---|
+| Sistem tugas belum ada | Tidak ada penugasan, tenggat, atau dependensi tugas. | Utang |
+| `WorkflowRun` belum dipakai | Tidak ada alur kerja otomatis. | Utang |
+| Monitoring belum ada | Tidak ada deteksi untuk percakapan yang memburuk. | Utang |
+| `system.safe_mode` tidak ada mekanismenya | Tidak ada tombol darurat saat ada gangguan. | Utang |
+| `IdempotencyKey` belum dipakai | Nomor dokumen bisa bentrok saat bersamaan. | **Dibayar** |
+| Tautan grup hanya CLI | Admin harus ke terminal; bot yang belum tertaut diam. | **Dibayar** |
 
 Semua tercatat di sini dan di `IZIN_TANPA_TOOL` / `TABEL_MATI` pada test —
 jadi tidak bisa dilupakan diam-diam.

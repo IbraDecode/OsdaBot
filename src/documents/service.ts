@@ -148,7 +148,7 @@ export class DocumentService {
       rows = await this.barisDariAbsensi(input)
     }
 
-    const documentNumber = await this.nomorBerikutnya(input.organizationId, input.template)
+    const documentNumber = await this.nomorBerikutnyaDenganRetry(input.organizationId, input.template)
 
     const buffer = await renderDocument({
       template: input.template,
@@ -288,18 +288,43 @@ export class DocumentService {
    * Prefix template penting: izin dan tugas adalah dua jenis surat yang
    * berbeda, bukan satu rangkaian nomor.
    */
+  /**
+   * Nomor dokumen berikutnya.
+   *
+   * ── Balapan yang ditutup di sini ──────────────────────────────────────────
+   *
+   * "Baca nomor terbesar, tambah satu, tulis" punya celah di antara baca dan
+   * tulis. Dua permintaan bersamaan bisa sama-sama membaca `SURAT/2026/012`,
+   * lalu sama-sama menulis `SURAT/2026/012`.
+   *
+   * Dua dokumen resmi berbeda dengan identitas yang sama bukan masalah
+   * kosmetik: yang dirujuk orang adalah nomor itu, dan dua nomor yang sama
+   * membuat rujukan itu tidak bisa dipercaya.
+   *
+   * Penutupannya: constraint UNIQUE di database (`organizationId`,
+   * `documentNumber`). Pembacaan tetap perlu, tapi sekarang konfliknya
+   * terlihat — dan nomor berikutnya dicoba lagi, bukan diterima apa adanya.
+   *
+   * Bandingkan nomor yang tersimpan sebagai TEKS lalu ambil bagian angkanya.
+   * Cari angka terbesar, bukan `findFirst` berurutan — nomor bisa dihapus, jadi
+   * baris terakhir yang tersisa belum tentu yang terbesar.
+   */
   private async nomorBerikutnya(organizationId: string, template: DocumentTemplate): Promise<string> {
     const tahun = new Date().getFullYear()
     const prefix = `${PREFIX_TEMPLATE[template]}/${tahun}/`
 
-    // Bandingkan nomor yang tersimpan sebagai TEKS, lalu ambil bagian
-    // angkanya. Busca angka terbesar, bukan `findFirst` berurutan — nomor
-    // bisa dihapus, jadi nomor terakhir yang tersisa belum tentu yang
-    // terbesar.
+    // Sengaja TIDAK menyaring `documentType`.
+    //
+    // Penomoran unik per ORGANISASI, bukan per jenis dokumen. Surat izin dan
+    // surat tugas berbagi prefix `SURAT`, jadi keduanya harus menghitung dari
+    // angka terbesar di antara keduanya — kalau masing-masing menghitung dari
+    // nol, keduanya sama-sama menghasilkan `SURAT/2026/001`.
+    //
+    // Bug ini tersembunyi selama constraint UNIQUE belum ada: kedua dokumen
+    // tersimpan dengan nomor yang sama dan tidak ada yang sederhana.
     const rows = await this.prisma.documentRecord.findMany({
       where: {
         organizationId,
-        documentType: template,
         documentNumber: { startsWith: prefix },
       },
       select: { documentNumber: true },
@@ -314,6 +339,40 @@ export class DocumentService {
     }
 
     return `${prefix}${String(terbesar + 1).padStart(3, '0')}`
+  }
+
+  /**
+   * Nomor berikutnya, diulang sampai konsisten.
+   *
+   * Percobaan dibatasi: kalau lima kali berturut-turut semuanya bentrok,
+   * berarti ada masalah lain — mengulang tanpa batas hanya menyembunyikannya
+   * di balik timeout.
+   */
+  private async nomorBerikutnyaDenganRetry(organizationId: string, template: DocumentTemplate): Promise<string> {
+    let kandidat = await this.nomorBerikutnya(organizationId, template)
+
+    for (let percobaan = 0; percobaan < MAKS_PERCOBAAN_NOMOR; percobaan += 1) {
+      // Cek tanpa menyaring jenis dokumen — sama seperti perhitungannya.
+      // Kalau dicek per jenis, dokumen lain dengan nomor sama lolos dari cek
+      // lalu ditolak database dengan P2002 yang tidak enak dibaca.
+      const bentrok = await this.prisma.documentRecord.findUnique({
+        where: {
+          organizationId_documentNumber: { organizationId, documentNumber: kandidat },
+        },
+        select: { id: true },
+      })
+
+      if (!bentrok) return kandidat
+
+      log.warn({ organizationId, template, kandidat }, 'nomor dokumen bentrok, mencoba nomor berikutnya')
+      kandidat = await this.nomorBerikutnya(organizationId, template)
+    }
+
+    throw new DocumentError(
+      'RENDER_FAILED',
+      `Tidak bisa mendapat nomor dokumen yang kosong setelah ${MAKS_PERCOBAAN_NOMOR} percobaan. ` +
+        'Coba lagi sebentar.',
+    )
   }
 
   /** Baris tabel dari daftar hadir yang benar-benar ada. */
@@ -357,6 +416,9 @@ export class DocumentService {
     }))
   }
 }
+
+/** Batas percobaan mencari nomor dokumen yang belum dipakai. */
+const MAKS_PERCOBAAN_NOMOR = 5
 
 const PREFIX_TEMPLATE: Record<DocumentTemplate, string> = {
   surat_izin: 'SURAT',

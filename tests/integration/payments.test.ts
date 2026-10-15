@@ -23,6 +23,7 @@ import {
   BaturPayAdapter,
   STATUS_MAP,
   handleBaturPayWebhook,
+  PaymentBusyError,
   type CreateChargeInput,
 } from '../../src/payments/baturpay.js'
 
@@ -33,6 +34,8 @@ const SECRET = 'rahasia-webhook-uji'
 
 let invoiceId: string
 let counter = 0
+/** Organisasi kedua, nyata — kolom `organizationId` punya foreign key. */
+let orgKedua: string
 
 function orderIdBaru(): string {
   counter += 1
@@ -78,11 +81,31 @@ async function kirim(orderId: string, status: string, amount: number, updatedAt?
 
 beforeEach(async () => {
   await prisma.payment.deleteMany({ where: { providerReference: { startsWith: 'OSDA-UJI-' } } })
+  // Kunci idempotensi dari run sebelumnya harus dibersihkan juga — kalau tidak,
+  // test ini menguji sisa miliknya sendiri, bukan perilakunya.
+  //
+  // Dua prefiks dibersihkan: organisasi utama DAN organisasi kedua yang dipakai
+  // test "kunci dibatasi per organisasi". Membersihkan satu saja menyisakan
+  // kunci yang tertinggal dari run sebelumnya.
+  await prisma.idempotencyKey.deleteMany({
+    where: {
+      OR: [
+        { key: { startsWith: `${ORG}:payment.create:` } },
+        { key: { startsWith: `${orgKedua}:payment.create:` } },
+      ],
+    },
+  })
   const invoice = await prisma.invoice.create({
     data: { organizationId: ORG, number: `UJI-BAYAR/${Date.now()}`, title: 'Uji Pembayaran', totalAmount: 100_000 },
     select: { id: true },
   })
   invoiceId = invoice.id
+
+  const kedua = await prisma.organization.create({
+    data: { name: `Organisasi Kedua ${Date.now()}`, slug: `org-kedua-${Date.now()}` },
+    select: { id: true },
+  })
+  orgKedua = kedua.id
 })
 
 describe('peta status', () => {
@@ -433,5 +456,138 @@ describe('verifikasi signature webhook', () => {
     const sig = createHmac('sha256', SECRET).update(Buffer.concat([Buffer.from('1000.'), raw])).digest('hex')
 
     expect(verifikasi(raw, '2000', sig, SECRET)).toBe(false)
+  })
+})
+describe('idempotensi pembayaran', () => {
+  it('BUG REGRESSION: kunci idempotensi DIBATAS per organisasi', async () => {
+    // `IdempotencyKey.key` adalah primary key GLOBAL. Tanpa awalan organisasi,
+    // dua organisasi yang menghasilkan kunci sama saling menabrak — dan
+    // salah satunya gagal dengan pesan yang tidak ada hubungannya.
+    const adapter = new BaturPayAdapter({
+      prisma,
+      baseUrl: 'https://baturpay.test',
+      apiKey: 'bp_live_uji',
+      fetchImpl: async () => new Response('{}'),
+    })
+
+    const first = await adapter.recordPayment({
+      organizationId: ORG,
+      invoiceId,
+      amount: 25_000,
+      orderId: orderIdBaru(),
+      idempotencyKey: 'kunci-yang-sama',
+    })
+    const kedua = await adapter.recordPayment({
+      organizationId: orgKedua,
+      invoiceId,
+      amount: 25_000,
+      orderId: orderIdBaru(),
+      idempotencyKey: 'kunci-yang-sama',
+    })
+
+    // Kalau kunci tidak dibatasi organisasi, `kedua` akan melihat kunci milik
+    // `first` dan perusahaan kedua bisa saja mengembalikan pembayaran milik perusahaan pertama.
+    expect(kedua.id).not.toBe(first.id)
+    expect(kedua.duplikat).toBe(false)
+  })
+
+  it('BUG REGRESSION: kunci yang sama MENGEMBALIKAN hasil lama, bukan membuat yang baru', async () => {
+    // Charge ganda untuk satu tagihan berarti dua permintaan transfer.
+    const adapter = new BaturPayAdapter({
+      prisma,
+      baseUrl: 'https://baturpay.test',
+      apiKey: 'bp_live_uji',
+      fetchImpl: async () => new Response('{}'),
+    })
+
+    const kunci = `uji-${Date.now()}`
+    const pertama = await adapter.recordPayment({
+      organizationId: ORG,
+      invoiceId,
+      amount: 30_000,
+      orderId: orderIdBaru(),
+      idempotencyKey: kunci,
+    })
+    const kedua = await adapter.recordPayment({
+      organizationId: ORG,
+      invoiceId,
+      amount: 30_000,
+      orderId: orderIdBaru(),
+      idempotencyKey: kunci,
+    })
+
+    expect(kedua.duplikat).toBe(true)
+    expect(kedua.id).toBe(pertama.id)
+  })
+
+  it('BUG REGRESSION: kunci BASI dari proses yang mati tidak memblokir selamanya', async () => {
+    // Kunci ditulis sebelum operasi selesai. Kalau proses mati di tengah
+    // jalan — restart, OOM, container dibunuh — kunci tertinggal `IN_PROGRESS`.
+    // Kalau tidak ada batas umurnya, operasi itu tidak akan pernah bisa
+    // diulang, dan tagihannya menggantung selamanya.
+    const adapter = new BaturPayAdapter({
+      prisma,
+      baseUrl: 'https://baturpay.test',
+      apiKey: 'bp_live_uji',
+      fetchImpl: async () => new Response('{}'),
+    })
+
+    const kunci = `basi-${Date.now()}`
+    await prisma.idempotencyKey.create({
+      data: {
+        key: `${ORG}:payment.create:${kunci}`,
+        operation: 'payment.create',
+        // Satu jam lalu: jauh melewati batas 5 menit.
+        createdAt: new Date(Date.now() - 60 * 60 * 1000),
+      },
+    })
+
+    const hasil = await adapter.recordPayment({
+      organizationId: ORG,
+      invoiceId,
+      amount: 30_000,
+      orderId: orderIdBaru(),
+      idempotencyKey: kunci,
+    })
+
+    expect(hasil.duplikat).toBe(false)
+    await prisma.idempotencyKey.deleteMany({ where: { key: { contains: kunci } } })
+  })
+
+  it('BUG REGRESSION: kunci yang sedang berjalan DITOLAK, bukan diabaikan', async () => {
+    // Kalau kunci IN_PROGRESS diabaikan, dua charge berjalan bersamaan.
+    const adapter = new BaturPayAdapter({
+      prisma,
+      baseUrl: 'https://baturpay.test',
+      apiKey: 'bp_live_uji',
+      fetchImpl: async () => new Response('{}'),
+    })
+
+    const kunci = `uji-rival-${Date.now()}`
+    await prisma.idempotencyKey.create({
+      data: { key: `${ORG}:payment.create:${kunci}`, operation: 'payment.create' },
+    })
+
+    await expect(
+      adapter.recordPayment({
+        organizationId: ORG,
+        invoiceId,
+        amount: 30_000,
+        orderId: orderIdBaru(),
+        idempotencyKey: kunci,
+      }),
+    ).rejects.toBeInstanceOf(PaymentBusyError)
+
+    await prisma.idempotencyKey.deleteMany({ where: { key: { startsWith: `${ORG}:payment.create:${kunci}` } } })
+  })
+})
+
+describe('pembersihan', () => {
+  it('menghapus organisasi kedua yang dibuat khusus test ini', async () => {
+    await prisma.idempotencyKey.deleteMany({
+      where: { key: { startsWith: `${orgKedua}:payment.create:` } },
+    })
+    await prisma.payment.deleteMany({ where: { organizationId: orgKedua } })
+    await prisma.organization.deleteMany({ where: { id: orgKedua } })
   })
 })

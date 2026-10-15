@@ -159,6 +159,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<Applica
     documents,
     knowledge,
     payments,
+    groups,
     approvals,
     reminders,
   })

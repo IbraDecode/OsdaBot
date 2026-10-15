@@ -788,7 +788,14 @@ model DocumentRecord {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, documentType])
-  @@index([organizationId, documentNumber])
+
+  /// Unik per organisasi. Inilah yang membuat nomor dokumen tidak bisa bentrok.
+  ///
+  /// Sebelumnya hanya `@@index`, jadi dua permintaan bersamaan bisa sama-sama
+  /// membaca "nomor berikutnya 12" lalu sama-sama menulis `SURAT/2026/012`.
+  /// ConstRAINT unik mengubahnya jadi satu menang dan satu kena error — yang
+  /// bisa dicoba ulang dengan nomor baru.
+  @@unique([organizationId, documentNumber])
 }
 
 model KnowledgeDocument {

@@ -59,8 +59,6 @@ const IZIN_TANPA_TOOL = new Map<string, string>([
     'Sengaja: kirim massal ke daftar orang adalah operasi yang tidak bisa dibatalkan.',
   ],
   ['WHATSAPP_GROUP_MANAGE', 'Bot tidak mengelola anggota grup; tidak perlu untuk satu bot.'],
-  ['GROUPS_LINK', 'Tautan grup hanya lewat CLI. Bot yang belum tertaut di grup tidak akan merespons, dan itu harus disadari admin — bukan disembunyikan.'],
-  ['GROUPS_CONFIGURE', 'Konfigurasi grup hanya lewat CLI (`group:activation`).'],
   ['MONITORING_READ', 'Monitoring agent belum ada.'],
   ['MONITORING_MANAGE', 'Monitoring agent belum ada.'],
   [

@@ -31,6 +31,49 @@ import { logger } from '../observability/logger.js'
 
 const log = logger.child({ module: 'baturpay' })
 
+/** Percobaan lain sedang memproses operasi yang sama. */
+export class PaymentBusyError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'PaymentBusyError'
+  }
+}
+
+/**
+ * Kunci idempotensi, dibatasi per organisasi.
+ *
+ * `IdempotencyKey.key` adalah primary key GLOBAL. Tanpa awalan organisasi, dua
+ * organisasi yang menghasilkan kunci sama akan saling menabrak — dan salah
+ * satunya gagal dengan pesan yang tidak ada hubungannya dengan masalah
+ * sebenarnya.
+ */
+function kunciIdempotensi(organizationId: string, operasi: string, kunci: string): string {
+  return `${organizationId}:${operasi}:${kunci}`
+}
+
+/**
+ * Batas umur kunci `IN_PROGRESS`: 5 menit.
+ *
+ * Kunci ditulis sebelum operasi selesai. Kalau proses mati di tengah jalan,
+ * kunci itu tertinggal `IN_PROGRESS` **selamanya** dan operasi yang sama tidak
+ * akan pernah bisa diulang lagi — tagihannya menggantung tanpa jalan keluar.
+ *
+ * Operasinya sendiri (buat charge di penyedia) selesai dalam hitungan detik.
+ * Lima menit jauh melampaui itu, jadi kunci yang lebih tua hampir pasti
+ * ditinggalkan proses yang mati, bukan masih berjalan.
+ */
+const UMUR_MAKS_KUNCI_MS = 5 * 60 * 1000
+
+function sudahBasi(dibuatPada: Date): boolean {
+  return Date.now() - dibuatPada.getTime() > UMUR_MAKS_KUNCI_MS
+}
+
+/** Kode error Prisma, atau null. */
+function kodePrisma(error: unknown): string | null {
+  const kode = (error as { code?: unknown } | null)?.code
+  return typeof kode === 'string' ? kode : null
+}
+
 /**
  * Status BaturPay → status internal OSDABOT.
  *
@@ -380,13 +423,71 @@ async listPayments(
 }
 
 /** Catat pembayaran yang Charge-nya sudah dibuat di penyedia. */
+/**
+ * Catat pembayaran yang charge-nya sudah dibuat di penyedia.
+ *
+ * Idempoten lewat `IdempotencyKey`.
+ *
+ * `order_id` BaturPay menolak duplikat dengan `409 ORDER_EXISTS`, jadi di sisi
+ * penyedia sudah aman. Tapi kalau percobaan pertama berhasil di penyedia lalu
+ * gagal di sini, percobaan ulang dengan `order_id` baru akan membuat dua QRIS
+ * untuk satu tagihan — dan orang tidak tahu mana yang benar.
+ *
+ * Kunci idempotensi ditulis **sebelum** pencatatan, jadi percobaan ulang melihat
+ * operasi yang sama. Kalau sedang berjalan, pemanggil diberi tahu alih-alih
+ * dibuatkan charge kedua.
+ */
 async recordPayment(input: {
   organizationId: string
   invoiceId: string
   amount: number
   orderId: string
   qrisUrl?: string | null
-}): Promise<{ id: string }> {
+  idempotencyKey?: string
+}): Promise<{ id: string; duplikat: boolean }> {
+  const kunci = kunciIdempotensi(input.organizationId, 'payment.create', input.idempotencyKey ?? input.orderId)
+
+  // Percobaan ulang: kembalikan hasil yang sudah ada.
+  const ada = await this.prisma.idempotencyKey.findUnique({
+    where: { key: kunci },
+    select: { status: true, responseHash: true, createdAt: true },
+  })
+
+  if (ada?.status === 'COMPLETED' && ada.responseHash) {
+    const payment = await this.prisma.payment.findFirst({
+      where: { id: ada.responseHash, organizationId: input.organizationId },
+      select: { id: true },
+    })
+    if (payment) {
+      log.info({ kunci }, 'charge ulang memakai hasil yang sudah ada')
+      return { id: payment.id, duplikat: true }
+    }
+  }
+
+  // Kunci yang sudah basi berasal dari proses yang mati di tengah jalan.
+  // Menolaknya berarti operasi itu tidak akan pernah bisa diulang.
+  if (ada?.status === 'IN_PROGRESS' && !sudahBasi(ada.createdAt)) {
+    throw new PaymentBusyError('Permintaan pembayaran untuk tagihan ini sedang diproses. Coba lagi sebentar.')
+  }
+
+  // Kunci basi dipakai ULANG, bukan dibuat ulang.
+  //
+  // `create` di sini akan bentrok dengan baris basi yang sudah ada — dan
+  // memperlakukannya sebagai "sedang diproses" berubah menjadi blokir
+  // selamanya, persis yang ingin dihindari.
+  if (!ada) {
+    try {
+      await this.prisma.idempotencyKey.create({ data: { key: kunci, operation: 'payment.create' } })
+    } catch (error) {
+      // Kunci bentrok = percobaan lain baru saja mengambilnya di antara
+      // pembacaan dan penulisan ini.
+      if (kodePrisma(error) === 'P2002') {
+        throw new PaymentBusyError('Permintaan pembayaran untuk tagihan ini sedang diproses. Coba lagi sebentar.')
+      }
+      throw error
+    }
+  }
+
   const payment = await this.prisma.payment.create({
     data: {
       organizationId: input.organizationId,
@@ -399,7 +500,13 @@ async recordPayment(input: {
     },
     select: { id: true },
   })
-  return payment
+
+  await this.prisma.idempotencyKey.update({
+    where: { key: kunci },
+    data: { status: 'COMPLETED', responseHash: payment.id, completedAt: new Date() },
+  })
+
+  return { id: payment.id, duplikat: false }
 }
 
 }
