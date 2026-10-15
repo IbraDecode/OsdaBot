@@ -59,10 +59,10 @@ function buatDeps(options: {
 
   const tools = {
     get: (name: string) => {
-      if (name === (options.namaTool ?? 'whatsapp.send_message')) {
+      if (name === (options.namaTool ?? 'whatsapp_send_message')) {
         return {
           name,
-          requiredPermissions: ['whatsapp.send' as never],
+          requiredPermissions: ['whatsapp_send' as never],
           execute: async (payload: unknown, context: Record<string, unknown>) => {
             dipanggil.push({ payload, context })
             return { message: 'Pesan terkirim.' }
@@ -87,7 +87,7 @@ describe('ToolApprovalExecutor', () => {
     const { executor, dipanggil, updated } = buatDeps({})
 
     const hasil = await executor.executeApproved({
-      toolName: 'whatsapp.send_message',
+      toolName: 'whatsapp_send_message',
       payload: { text: 'halo' },
       correlationId: 'corr-1',
     })
@@ -104,7 +104,7 @@ describe('ToolApprovalExecutor', () => {
     const { executor, dipanggil } = buatDeps({})
 
     await executor.executeApproved({
-      toolName: 'whatsapp.send_message',
+      toolName: 'whatsapp_send_message',
       // Penyerang mencoba mengarang konteks lewat argumen ini.
       payload: { text: 'x', organizationId: 'org-penyerang' } as never,
       correlationId: 'corr-1',
@@ -122,7 +122,7 @@ describe('ToolApprovalExecutor', () => {
     const { executor, dipanggil, updated } = buatDeps({ izin: PERMINSI_TOLAK })
 
     const hasil = await executor.executeApproved({
-      toolName: 'whatsapp.send_message',
+      toolName: 'whatsapp_send_message',
       payload: { text: 'halo' },
       correlationId: 'corr-1',
     })
@@ -137,7 +137,7 @@ describe('ToolApprovalExecutor', () => {
     const { executor, dipanggil } = buatDeps({ executedAt: new Date() })
 
     const hasil = await executor.executeApproved({
-      toolName: 'whatsapp.send_message',
+      toolName: 'whatsapp_send_message',
       payload: { text: 'halo' },
       correlationId: 'corr-1',
     })
@@ -151,7 +151,7 @@ describe('ToolApprovalExecutor', () => {
     const { executor, dipanggil } = buatDeps({ baris: null })
 
     const hasil = await executor.executeApproved({
-      toolName: 'whatsapp.send_message',
+      toolName: 'whatsapp_send_message',
       payload: { text: 'halo' },
       correlationId: 'corr-1',
     })
@@ -164,7 +164,7 @@ describe('ToolApprovalExecutor', () => {
     const { executor, dipanggil } = buatDeps({ namaTool: 'tool.lain' })
 
     const hasil = await executor.executeApproved({
-      toolName: 'whatsapp.send_message',
+      toolName: 'whatsapp_send_message',
       payload: { text: 'halo' },
       correlationId: 'corr-1',
     })

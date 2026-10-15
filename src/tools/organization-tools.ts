@@ -30,7 +30,7 @@ export function buildOrganizationTools(deps: OrganizationToolsDeps): Array<ToolD
   const { prisma, whatsapp } = deps
 
   const listMembers: ToolDefinition<{ search?: string; limit?: number; offset?: number }, unknown> = {
-    name: 'organization.list_members',
+    name: 'organization_list_members',
     description:
       'Lihat daftar anggota organisasi, boleh disaring dengan pencarian nama. Gunakan saat pengguna menanyakan isi keanggotaan ataujumlah anggota.',
     inputSchema: z.object({
@@ -90,7 +90,7 @@ export function buildOrganizationTools(deps: OrganizationToolsDeps): Array<ToolD
   }
 
   const searchMember: ToolDefinition<{ query: string }, unknown> = {
-    name: 'organization.search_members',
+    name: 'organization_search_members',
     description:
       'Cari anggota berdasarkan nama atau panggilan. WAJIB dipakai sebelum mengubah data yang menyebut nama orang, supaya tidak salah orang. Kalau hasilnya lebih dari satu, wajib minta klarifikasi ke pengguna.',
     inputSchema: z.object({
@@ -171,7 +171,7 @@ export function buildOrganizationTools(deps: OrganizationToolsDeps): Array<ToolD
   }
 
   const createMember: ToolDefinition<{ fullName: string; className?: string | null; aliases?: string[] }, unknown> = {
-    name: 'organization.create_member',
+    name: 'organization_create_member',
     description:
       'Tambahkan anggota baru ke master anggota organisasi. Gunakan saat pengguna mengirim daftar nama (mis. "masukin daftar ini jadi anggota LKBB") atau menambah orang baru. Data anggota TIDAK otomatis terhubung ke nomor WhatsApp — itu perlu verifikasi terpisah.',
     inputSchema: z.object({
@@ -221,7 +221,7 @@ export function buildOrganizationTools(deps: OrganizationToolsDeps): Array<ToolD
   }
 
   const getRoles: ToolDefinition<Record<string, never>, unknown> = {
-    name: 'organization.get_roles',
+    name: 'organization_get_roles',
     description: 'Lihat daftar peran dalam organisasi beserta izinnya. Gunakan saat ada pertanyaan soal siapa boleh melakukan apa.',
     inputSchema: z.object({}) as never,
     requiredPermissions: [PERMISSIONS.ROLES_READ],
@@ -254,7 +254,7 @@ export function buildOrganizationTools(deps: OrganizationToolsDeps): Array<ToolD
   }
 
   const getEvents: ToolDefinition<{ limit?: number }, unknown> = {
-    name: 'organization.get_events',
+    name: 'organization_get_events',
     description: 'Lihat kegiatan yang sudah tercatat di organisasi beserta tanggalnya.',
     inputSchema: z.object({ limit: z.number().int().positive().max(50).optional() }) as never,
     requiredPermissions: [PERMISSIONS.EVENTS_READ],
@@ -289,7 +289,7 @@ export function buildOrganizationTools(deps: OrganizationToolsDeps): Array<ToolD
     { to?: string; text: string; quoteMessageId?: string | null; mentionMemberIds?: string[] },
     unknown
   > = {
-    name: 'whatsapp.send_message',
+    name: 'whatsapp_send_message',
     description:
       'Kirim pesan teks WhatsApp. TUJUAN WAJIB diisi eksplisit — kalau tidak, pakai chat tempat perintah datang. Untuk mengirim ke grup, tanyakan dulu ke pengguna karena pesan yang terkirim tidak bisa ditarik kembali.',
     inputSchema: z.object({
@@ -377,7 +377,7 @@ export function buildOrganizationTools(deps: OrganizationToolsDeps): Array<ToolD
   }
 
   const reactMessage: ToolDefinition<{ messageId: string; emoji: string }, unknown> = {
-    name: 'whatsapp.react_message',
+    name: 'whatsapp_react_message',
     description: 'Beri reaksi pada sebuah pesan (mis. centang saat tugas selesai). Emoji kosong menghapus reaksi.',
     inputSchema: z.object({
       messageId: z.string().min(1).max(128),
@@ -396,7 +396,7 @@ export function buildOrganizationTools(deps: OrganizationToolsDeps): Array<ToolD
   }
 
   const getGroupMembers: ToolDefinition<Record<string, never>, unknown> = {
-    name: 'whatsapp.get_group_members',
+    name: 'whatsapp_get_group_members',
     description:
       'Ambil daftar anggota grup WhatsApp. Hanya untuk memastikan keanggotaan grup — BUKAN untuk 판단 siapa yang berwenang di organisasi.',
     inputSchema: z.object({}) as never,
@@ -426,7 +426,7 @@ export function buildOrganizationTools(deps: OrganizationToolsDeps): Array<ToolD
   }
 
   const getGroupMetadata: ToolDefinition<{ groupJid?: string }, unknown> = {
-    name: 'whatsapp.get_group_metadata',
+    name: 'whatsapp_get_group_metadata',
     description: 'Ambil metadata grup (nama, jumlah anggota). Berguna untuk mengenali grup yang belum tertaut ke organisasi.',
     inputSchema: z.object({ groupJid: z.string().optional() }) as never,
     requiredPermissions: [PERMISSIONS.WHATSAPP_SEND],

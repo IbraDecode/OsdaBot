@@ -52,7 +52,7 @@ const dummy = {
 }
 ```
 
-## Unit (323 test)
+## Unit (336 test)
 
 ### `tests/unit/jid.test.ts`
 

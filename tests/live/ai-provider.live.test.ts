@@ -61,7 +61,7 @@ describe.skipIf(!punyaKredensial)('AI provider — integrasi langsung', () => {
       ],
       tools: [
         {
-          name: 'attendance.update',
+          name: 'attendance_update',
           description: 'Ubah status kehadiran anggota yang sudah ada di daftar',
           parameters: {
             type: 'object',
@@ -74,7 +74,7 @@ describe.skipIf(!punyaKredensial)('AI provider — integrasi langsung', () => {
           },
         },
         {
-          name: 'attendance.create',
+          name: 'attendance_create',
           description: 'Buat daftar kehadiran baru untuk kegiatan',
           parameters: {
             type: 'object',
@@ -88,7 +88,7 @@ describe.skipIf(!punyaKredensial)('AI provider — integrasi langsung', () => {
     expect(response.toolCalls.length).toBeGreaterThan(0)
     const call = response.toolCalls[0]!
 
-    expect(call.name).toBe('attendance.update')
+    expect(call.name).toBe('attendance_update')
     expect(call.parseError).toBeUndefined()
     expect(call.arguments.status).toBe('EXCUSED')
     expect(String(call.arguments.reason ?? '')).toContain('meeting')
@@ -98,14 +98,14 @@ describe.skipIf(!punyaKredensial)('AI provider — integrasi langsung', () => {
 describe('normalizeToolCalls (tanpa jaringan)', () => {
   it('membaca argument JSON yang valid', () => {
     const hasil = normalizeToolCalls([
-      { id: '1', function: { name: 'attendance.update', arguments: '{"status":"EXCUSED"}' } },
+      { id: '1', function: { name: 'attendance_update', arguments: '{"status":"EXCUSED"}' } },
     ])
     expect(hasil[0]?.arguments).toEqual({ status: 'EXCUSED' })
   })
 
   it('menandai JSON rusak, BUKAN mengabaikannya diam-diam', () => {
     const hasil = normalizeToolCalls([
-      { id: '1', function: { name: 'attendance.update', arguments: '{bukan json' } },
+      { id: '1', function: { name: 'attendance_update', arguments: '{bukan json' } },
     ])
     expect(hasil[0]?.parseError).toBeDefined()
     expect(hasil[0]?.arguments).toEqual({})

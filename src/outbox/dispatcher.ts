@@ -386,7 +386,7 @@ export class OutboxDispatcher {
 /** Topik yang dipahami sistem. */
 export const TOPICS = {
   WHATSAPP_MESSAGE: 'whatsapp.message.send',
-  ATTENDANCE_NOTIFY: 'attendance.notify',
+  ATTENDANCE_NOTIFY: 'attendance_notify',
 } as const
 
 /** Helper untuk menulis event di dalam transaksi. */

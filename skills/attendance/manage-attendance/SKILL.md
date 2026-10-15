@@ -3,12 +3,12 @@ name: manage-attendance
 description: Mengelola daftar hadir organisasi secara percakapan — membuat daftar, menambah anggota, mengubah status dan alasan, serta menampilkan daftar dengan format yang dipertahankan.
 version: 1.0.0
 required_tools:
-  - attendance.list_events
-  - attendance.get
-  - attendance.create
-  - attendance.add_member
-  - attendance.update
-  - attendance.get_unconfirmed
+  - attendance_list_events
+  - attendance_get
+  - attendance_create
+  - attendance_add_member
+  - attendance_update
+  - attendance_get_unconfirmed
 required_permissions:
   - attendance.read
   - attendance.update

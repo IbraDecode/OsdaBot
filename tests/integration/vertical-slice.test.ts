@@ -510,7 +510,7 @@ describe('agent runtime dengan tool nyata', () => {
         toolCalls: [
           {
             id: 'call_1',
-            name: 'organization.search_members',
+            name: 'organization_search_members',
             arguments: { query: 'Ibra Ramdan' },
           },
         ],
@@ -550,7 +550,7 @@ describe('agent runtime dengan tool nyata', () => {
         toolCalls: [
           {
             id: 'call_denied',
-            name: 'organization.create_member',
+            name: 'organization_create_member',
             arguments: { fullName: 'Orang Ilegal' },
           },
         ],
@@ -590,7 +590,7 @@ describe('agent runtime dengan tool nyata', () => {
     // Model selalu minta tool → harus dihentikan oleh batas.
     const llm = new ScriptedLlmProvider(
       Array.from({ length: 20 }, (_, index) => ({
-        toolCalls: [{ id: `call_${index}`, name: 'organization.list_members', arguments: {} }],
+        toolCalls: [{ id: `call_${index}`, name: 'organization_list_members', arguments: {} }],
       })),
     )
 
@@ -625,7 +625,7 @@ describe('agent runtime dengan tool nyata', () => {
         toolCalls: [
           {
             id: 'call_bad',
-            name: 'organization.list_members',
+            name: 'organization_list_members',
             arguments: {},
             parseError: 'Argumen tool bukan JSON yang valid.',
           },

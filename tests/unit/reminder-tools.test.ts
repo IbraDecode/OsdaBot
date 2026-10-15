@@ -146,7 +146,7 @@ function buatDeps(grup: Array<{ jid: string; subject: string | null; purpose: st
   return { dijadwalkan, tools, byName }
 }
 
-describe('reminder.create', () => {
+describe('reminder_create', () => {
   /**
    * Waktu lokal yang pasti di masa depan.
    *
@@ -162,7 +162,7 @@ describe('reminder.create', () => {
 
   it('menjadwalkan pengingat ke chat asal', async () => {
     const { dijadwalkan, byName } = buatDeps()
-    const tool = byName['reminder.create']!
+    const tool = byName['reminder_create']!
 
     const hasil = await tool.execute(
       { title: 'Latihan LKBB', body: '16:00 lapangan', scheduledAt: besok9() },
@@ -178,7 +178,7 @@ describe('reminder.create', () => {
 
   it('MENOLAK waktu yang sudah lewat', async () => {
     const { dijadwalkan, byName } = buatDeps()
-    const tool = byName['reminder.create']!
+    const tool = byName['reminder_create']!
 
     await expect(
       tool.execute(
@@ -192,7 +192,7 @@ describe('reminder.create', () => {
 
   it('MENOLAK waktu terlalu jauh ke depan', async () => {
     const { byName } = buatDeps()
-    const tool = byName['reminder.create']!
+    const tool = byName['reminder_create']!
 
     await expect(
       tool.execute(
@@ -204,7 +204,7 @@ describe('reminder.create', () => {
 
   it('MENOLAK format waktu yang tidak lengkap', async () => {
     const { byName } = buatDeps()
-    const tool = byName['reminder.create']!
+    const tool = byName['reminder_create']!
 
     await expect(
       tool.execute({ title: 'X', body: 'Y', scheduledAt: 'besok jam 9' }, buatKonteks()),
@@ -214,7 +214,7 @@ describe('reminder.create', () => {
   it('MENOLAK pengingat ke grup yang tidak tertaut ke organisasi', async () => {
     // Kalau model boleh memilih JID bebas, bot bisa mengirim ke mana saja.
     const { byName } = buatDeps([])
-    const tool = byName['reminder.create']!
+    const tool = byName['reminder_create']!
 
     await expect(
       tool.execute(
@@ -228,7 +228,7 @@ describe('reminder.create', () => {
     const { dijadwalkan, byName } = buatDeps([
       { jid: '123@g.us', subject: 'Panitia LKBB', purpose: 'Panitia latihan' },
     ])
-    const tool = byName['reminder.create']!
+    const tool = byName['reminder_create']!
 
     await tool.execute(
       { title: 'X', body: 'Y', scheduledAt: besok9(), toGroupTitle: 'LKBB' },
@@ -245,7 +245,7 @@ describe('reminder.create', () => {
       { jid: '1@g.us', subject: 'Panitia LKBB 2026', purpose: null },
       { jid: '2@g.us', subject: 'Panitia LKBB 2025', purpose: null },
     ])
-    const tool = byName['reminder.create']!
+    const tool = byName['reminder_create']!
 
     await expect(
       tool.execute(
@@ -262,7 +262,7 @@ describe('reminder.create', () => {
       { jid: '1@g.us', subject: 'Panitia LKBB', purpose: null },
       { jid: '2@g.us', subject: 'Anggota OSIS', purpose: null },
     ])
-    const tool = byName['reminder.create']!
+    const tool = byName['reminder_create']!
 
     await expect(
       tool.execute(
@@ -273,10 +273,10 @@ describe('reminder.create', () => {
   })
 })
 
-describe('reminder.list', () => {
+describe('reminder_list', () => {
   it('mengembalikan pengingat terjadwal', async () => {
     const { byName } = buatDeps()
-    const tool = byName['reminder.list']!
+    const tool = byName['reminder_list']!
 
     const hasil = await tool.execute({}, buatKonteks())
 
@@ -286,17 +286,17 @@ describe('reminder.list', () => {
   })
 })
 
-describe('reminder.cancel', () => {
+describe('reminder_cancel', () => {
   it('butuh reminderId atau all', async () => {
     const { byName } = buatDeps()
-    const tool = byName['reminder.cancel']!
+    const tool = byName['reminder_cancel']!
 
     await expect(tool.execute({}, buatKonteks())).rejects.toThrow(/reminderId/)
   })
 
   it('membatalkan semua', async () => {
     const { byName } = buatDeps()
-    const tool = byName['reminder.cancel']!
+    const tool = byName['reminder_cancel']!
 
     const hasil = await tool.execute({ all: true }, buatKonteks())
 
@@ -307,7 +307,7 @@ describe('reminder.cancel', () => {
   it('MENOLAK pembatalan pengingat milik organisasi lain', async () => {
     // Kalau tidak dicek, satu organisasi bisa membatalkan pengingat org lain.
     const { byName } = buatDeps()
-    const tool = byName['reminder.cancel']!
+    const tool = byName['reminder_cancel']!
 
     await expect(
       tool.execute(
@@ -332,10 +332,10 @@ describe('kontrak tool pengingat', () => {
   it('pembatalan selalu butuh persetujuan', () => {
     // Pembatalan bisa salah paham dan tidak bisa dibatalkan.
     const { byName } = buatDeps()
-    expect(byName['reminder.cancel']!.requiresApproval).toBe(true)
+    expect(byName['reminder_cancel']!.requiresApproval).toBe(true)
     // Pembuatan pengingat tidak dikirim ke siapa pun sampai waktunya tiba —
     // jadi tidak perlu persetujuan.
-    expect(byName['reminder.create']!.requiresApproval).toBe(false)
+    expect(byName['reminder_create']!.requiresApproval).toBe(false)
   })
 
   it('deskripsi menjelaskan KAPAN dipakai, bukan APA', () => {

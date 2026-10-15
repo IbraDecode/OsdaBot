@@ -42,7 +42,7 @@ export function buildAttendanceTools(deps: AttendanceToolsDeps): Array<ToolDefin
   const { attendance, identity } = deps
 
   const listEvents: ToolDefinition<{ limit?: number }, unknown> = {
-    name: 'attendance.list_events',
+    name: 'attendance_list_events',
     description:
       'Gunakan saat pengguna menanyakan daftar kegiatan yang punya daftar hadir, atau saat perlu tahu kegiatan mana yang aktif. Jangan gunakan untuk mengubah apa pun.',
     inputSchema: z.object({
@@ -68,7 +68,7 @@ export function buildAttendanceTools(deps: AttendanceToolsDeps): Array<ToolDefin
   }
 
   const getList: ToolDefinition<{ attendanceEventId?: string }, unknown> = {
-    name: 'attendance.get',
+    name: 'attendance_get',
     description:
       'Ambil daftar hadir beserta isi dan formatnya. Gunakan untuk menampilkan daftar, melihat siapa yang sudah/belum konfirmasi, atau melanjutkan perubahan pada daftar yang sama. Jika attendanceEventId tidak diberikan, daftar aktif terakhir dipakai.',
     inputSchema: z.object({
@@ -112,7 +112,7 @@ export function buildAttendanceTools(deps: AttendanceToolsDeps): Array<ToolDefin
     { title: string; eventDate?: string; location?: string | null; markdown?: string | null },
     unknown
   > = {
-    name: 'attendance.create',
+    name: 'attendance_create',
     description:
       'Buat daftar hadir untuk satu kegiatan. JUDUL WAJIB diambil dari nama kegiatan yang disebut pengguna — jangan pernah mengarang atau mengosongkan, karena parameter ini wajib dan tanpa itu tool gagal. ' +
       'Pakai tanggal YYYY-MM-DD. Kalau kegiatan untuk tanggal itu sudah ada, jangan buat ulang — gunakan attendance.get. ' +
@@ -174,7 +174,7 @@ export function buildAttendanceTools(deps: AttendanceToolsDeps): Array<ToolDefin
     { attendanceEventId?: string; memberName?: string; memberId?: string; status?: AttendanceStatus; reason?: string | null },
     unknown
   > = {
-    name: 'attendance.add_member',
+    name: 'attendance_add_member',
     description:
       'Tambahkan satu anggota ke daftar hadir. memberName boleh dipakai, tapi WAJIB hasilkan memberId dari organization.search_members lebih dulu agar tidak salah orang. Kalau anggota sudah ada di daftar, tidak akan dibuat entri ganda.',
     inputSchema: z.object({
@@ -244,7 +244,7 @@ export function buildAttendanceTools(deps: AttendanceToolsDeps): Array<ToolDefin
     },
     unknown
   > = {
-    name: 'attendance.update',
+    name: 'attendance_update',
     description:
       'Ubah entri yang SUDAH ADA di daftar. Hanya field yang diisi yang berubah — kolom lain tetap apa adanya. Pakai ini untuk "ubah status jadi izin", "ganti alasan", atau koreksi field lain. Untuk menambahkan anggota baru pakai attendance.add_member.',
     inputSchema: z.object({
@@ -319,7 +319,7 @@ export function buildAttendanceTools(deps: AttendanceToolsDeps): Array<ToolDefin
   }
 
   const getUnconfirmed: ToolDefinition<{ attendanceEventId?: string }, unknown> = {
-    name: 'attendance.get_unconfirmed',
+    name: 'attendance_get_unconfirmed',
     description:
       'Daftarkan anggota yang belum mengonfirmasi kehadiran pada satu kegiatan. Gunakan untuk pertanyaan "siapa yang belum konfirmasi".',
     inputSchema: z.object({

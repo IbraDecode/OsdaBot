@@ -45,7 +45,7 @@ export function buildReminderTools(deps: ReminderToolsDeps): Array<ToolDefinitio
     { title: string; body: string; scheduledAt: string; toGroupTitle?: string },
     unknown
   > = {
-    name: 'reminder.create',
+    name: 'reminder_create',
     description:
       'Buat pengingat yang akan dikirim ke chat ini pada waktu tertentu. Gunakan saat pengguna minta "ingatkan saya", ' +
       '"kirim pengingat", atau menjadwalkan pesan untuk nanti. WAKTU WAJIB absolut (mis. 2026-10-20T09:00:00), ' +
@@ -123,7 +123,7 @@ export function buildReminderTools(deps: ReminderToolsDeps): Array<ToolDefinitio
   }
 
   const listReminders: ToolDefinition<{ limit?: number }, unknown> = {
-    name: 'reminder.list',
+    name: 'reminder_list',
     description:
       'Lihat daftar pengingat yang masih terjadwal. Gunakan saat pengguna bertanya "ada pengingat apa saja" atau "pengingat saya yang mana".',
     inputSchema: z.object({
@@ -158,7 +158,7 @@ export function buildReminderTools(deps: ReminderToolsDeps): Array<ToolDefinitio
   }
 
   const cancelReminder: ToolDefinition<{ reminderId?: string; all?: boolean }, unknown> = {
-    name: 'reminder.cancel',
+    name: 'reminder_cancel',
     description:
       'Batalkan satu pengingat, atau semua pengingat yang terjadwal. Gunakan saat pengguna membatalkan pengingat.',
     inputSchema: z.object({

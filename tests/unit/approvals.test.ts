@@ -190,8 +190,8 @@ describe('ApprovalEngine.request', () => {
       actorUserId: 'user-1',
       organizationId: 'org-1',
       taskId: null,
-      permission: 'whatsapp.send' as never,
-      actionType: 'whatsapp.send_message',
+      permission: 'whatsapp_send' as never,
+      actionType: 'whatsapp_send_message',
       payload,
       preview: 'Kirim: halo',
       chatJid: '628@s.whatsapp.net',
@@ -223,8 +223,8 @@ describe('ApprovalEngine.request', () => {
       actorUserId: 'user-1',
       organizationId: 'org-1',
       taskId: null,
-      permission: 'whatsapp.send' as never,
-      actionType: 'whatsapp.send_message',
+      permission: 'whatsapp_send' as never,
+      actionType: 'whatsapp_send_message',
       payload: {},
       preview: 'x',
     })
@@ -247,7 +247,7 @@ describe('ApprovalEngine.tryHandleReply', () => {
     const { prisma, state } = buatPrismaPalsu({
       approval: {
         id: 'apv-1',
-        actionType: 'whatsapp.send_message',
+        actionType: 'whatsapp_send_message',
         payloadPreview: 'Kirim: halo',
         payloadHash: hashPayload({}),
         payload: {},
@@ -284,7 +284,7 @@ describe('ApprovalEngine.tryHandleReply', () => {
     const { prisma, state } = buatPrismaPalsu({
       approval: {
         id: 'apv-1',
-        actionType: 'whatsapp.send_message',
+        actionType: 'whatsapp_send_message',
         payloadPreview: 'Kirim: halo',
         payloadHash: hashPayload({}),
         payload: {},
@@ -307,7 +307,7 @@ describe('ApprovalEngine.tryHandleReply', () => {
     const { prisma, state } = buatPrismaPalsu({
       approval: {
         id: 'apv-1',
-        actionType: 'whatsapp.send_message',
+        actionType: 'whatsapp_send_message',
         payloadPreview: 'Kirim: halo',
         payloadHash: hashPayload({ text: 'ringkasan singkat' }),
         payload: { text: 'SEMUA DATA ANGGOTA' },
@@ -338,7 +338,7 @@ describe('ApprovalEngine.tryHandleReply', () => {
     const { prisma, state } = buatPrismaPalsu({
       approval: {
         id: 'apv-1',
-        actionType: 'whatsapp.send_message',
+        actionType: 'whatsapp_send_message',
         payloadPreview: 'Kirim: ringkasan',
         payloadHash: hashPayload(payload),
         payload,
@@ -354,7 +354,7 @@ describe('ApprovalEngine.tryHandleReply', () => {
       executor: {
         executeApproved: async (input) => {
           dipanggil += 1
-          expect(input.toolName).toBe('whatsapp.send_message')
+          expect(input.toolName).toBe('whatsapp_send_message')
           expect(input.payload).toEqual(payload)
           expect(input.correlationId).toBe('corr-1')
           return { ok: true, summary: 'Pesan terkirim.' }
@@ -377,7 +377,7 @@ describe('ApprovalEngine.tryHandleReply', () => {
     const { prisma } = buatPrismaPalsu({
       approval: {
         id: 'apv-1',
-        actionType: 'whatsapp.send_message',
+        actionType: 'whatsapp_send_message',
         payloadPreview: 'p',
         payloadHash: hashPayload(payload),
         payload,

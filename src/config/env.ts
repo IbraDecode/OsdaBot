@@ -39,7 +39,15 @@ const envSchema = z
     AI_MODEL: z.string().min(1, 'AI_MODEL wajib diisi'),
     AI_TEMPERATURE: z.coerce.number().min(0).max(2).default(0.3),
     AI_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(2048),
-    AI_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
+    AI_TIMEOUT_MS: z.coerce.number().int().positive().default(180_000),
+    /**
+     * Percobaan ulang untuk error transien (timeout, 5xx, rate limit).
+     *
+     * Gateway yang dipakai adalah Cloudflare Tunnel yang memang tidak
+     * stabil — satu kedip tunnel seharusnya tidak langsung menjadi jawaban
+     * "AI provider bermasalah" untuk pengguna.
+     */
+    AI_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
 
     // --- WhatsApp ---
     WHATSAPP_SESSION_DIR: z.string().default('./auth_info_baileys'),

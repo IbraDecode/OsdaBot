@@ -137,7 +137,7 @@ function buatPrismaPalsu(options: { claimBerhasil?: boolean } = {}) {
           id: `job-${counter}`,
           organizationId: null,
           actorUserId: null,
-          type: 'reminder.send',
+          type: 'reminder_send',
           payload: {},
           idempotencyKey: null,
           status: 'SCHEDULED',

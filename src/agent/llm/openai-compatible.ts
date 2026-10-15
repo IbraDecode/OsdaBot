@@ -33,6 +33,8 @@ export interface OpenAiCompatibleOptions {
   temperature?: number
   maxOutputTokens?: number
   timeoutMs?: number
+  /** Percobaan ulang untuk error transien (bukan auth/bad_request). */
+  maxRetries?: number
   /** Dipakai test double. */
   client?: OpenAI
 }
@@ -44,11 +46,14 @@ export class OpenAiCompatibleProvider implements LlmProvider {
   private readonly client: OpenAI
   private readonly temperature: number
   private readonly maxOutputTokens: number
+  /** Berapa kali percobaan ulang untuk error transien. */
+  private readonly maxRetries: number
 
   constructor(options: OpenAiCompatibleOptions = {}) {
     this.model = options.model ?? env.AI_MODEL
     this.temperature = options.temperature ?? env.AI_TEMPERATURE
     this.maxOutputTokens = options.maxOutputTokens ?? env.AI_MAX_OUTPUT_TOKENS
+    this.maxRetries = options.maxRetries ?? env.AI_MAX_RETRIES
 
     this.client =
       options.client ??
@@ -56,11 +61,48 @@ export class OpenAiCompatibleProvider implements LlmProvider {
         baseURL: options.baseUrl ?? env.AI_BASE_URL,
         apiKey: options.apiKey ?? env.AI_API_KEY,
         timeout: options.timeoutMs ?? env.AI_TIMEOUT_MS,
-        maxRetries: 0, // Retry dikelola agent supaya bisa dihitung & dibatasi.
+        // Retry我们自己 yang menangani, supaya bisa dibatasi dan hanya untuk
+        // error transien. Retry bawaan SDK tidak membedakan jenis error.
+        maxRetries: 0,
       })
   }
 
   async chat(request: ChatRequest): Promise<ChatResponse> {
+    // Retry HANYA untuk gangguan transien.
+    //
+    // Gateway yang dipakai (`*.abc-tunnel.us`) adalah Cloudflare Tunnel dan
+    // memang tidak stabil: pengukuran menunjukkan HTTP 530 "origin
+    // unreachable" lalu pulih beberapa saat kemudian, dan 200 OK pada
+    // percobaan berikutnya.
+    //
+    // Tanpa retry, satu kedip tunnel membuat pengguna dapat jawaban
+    // "AI provider sedang bermasalah" padahal provider-nya sebenarnya baik.
+    //
+    // Yang TIDAK di-retry: auth, bad_request. Those are not transient —
+    // retrying an auth failure just locks the key out harder.
+    const maksimalPercobaan = this.maxRetries + 1
+
+    for (let percobaan = 1; ; percobaan += 1) {
+      try {
+        return await this.chatOnce(request)
+      } catch (error) {
+        const wrapped = wrapError(error)
+
+        const bolehUlang = percobaan < maksimalPercobaan && wrapped.retryable
+        if (!bolehUlang) throw wrapped
+
+        // Backoff eksponensial: tunnel butuh waktu, bukan percobaan instan.
+        const jeda = Math.min(2_000 * 2 ** (percobaan - 1), 15_000)
+        log.warn(
+          { percobaan, maksimalPercobaan, jeda, kind: wrapped.kind, status: wrapped.statusCode },
+          'permintaan LLM gagal, mencoba lagi',
+        )
+        await new Promise((resolve) => setTimeout(resolve, jeda))
+      }
+    }
+  }
+
+  private async chatOnce(request: ChatRequest): Promise<ChatResponse> {
     const mulai = Date.now()
 
     try {

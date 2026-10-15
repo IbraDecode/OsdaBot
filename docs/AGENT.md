@@ -203,3 +203,31 @@ Jalankan:
 ```bash
 RUN_LIVE_TESTS=true pnpm exec vitest run tests/live
 ```
+
+---
+
+## Retry AI provider
+
+Gateway yang dipakai (`*.abc-tunnel.us`) adalah **Cloudflare Tunnel** dan
+terverifikasi tidak stabil. Pengukuran nyata:
+
+```
+HTTP 530 "Cloudflare Tunnel error | ... trycloudflar.com"
+→ beberapa saat kemudian
+HTTP 200 OK
+```
+
+Tanpa retry, satu kedip tunnel langsung menjadi jawaban "AI provider sedang
+bermasalah" untuk pengguna — padahal provider-nya sebenarnya baik.
+
+| Config | Arti |
+|---|---|
+| `AI_TIMEOUT_MS` | Default 180 detik. Gateway butuh 2,5–40 detik tergantung jumlah tool |
+| `AI_MAX_RETRIES` | Default 2. Total percobaan = 1 + retry |
+
+Yang **tidak** di-retry: `auth` dan `bad_request`. Keduanya bukan transien —
+mencoba ulang kredensial yang ditolak hanya memperpanjang masalah dan bisa
+memicu penguncian kunci.
+
+Backoff eksponensial 2 detik, 4 detik, dibatasi 15 detik. Tunnel butuh waktu
+untuk pulih; percobaan instan tidak membantu.

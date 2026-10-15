@@ -55,9 +55,9 @@ export function failedFingerprint(call: { name: string; arguments: Record<string
 }
 
 const DEFAULT_TOOLS = [
-  'organization.list_members',
-  'attendance.list_events',
-  'reminder.list',
+  'organization_list_members',
+  'attendance_list_events',
+  'reminder_list',
 ]
 
 /** Permintaan masuk ke agent. */

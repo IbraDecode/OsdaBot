@@ -6,8 +6,8 @@ name: manage-attendance
 description: Mengelola daftar hadir organisasi.
 version: 1.2.0
 required_tools:
-  - attendance.get
-  - attendance.update
+  - attendance_get
+  - attendance_update
 required_permissions:
   - attendance.read
 contexts: [private, group]
@@ -35,7 +35,10 @@ describe('parseFrontMatter', () => {
 
   it('membaca daftar YAML multi-baris', () => {
     const { data } = parseFrontMatter(SKILL_VALID)
-    expect(data.required_tools).toEqual(['attendance.get', 'attendance.update'])
+    // Nama TOOL memakai underscore (dipakai di API gateway yang hanya
+    // menerima [a-zA-Z0-9_-]), sedangkan PERMISSION memakai titik — itu
+    // identitas internal dan tidak pernah dikirim ke model.
+    expect(data.required_tools).toEqual(['attendance_get', 'attendance_update'])
     expect(data.required_permissions).toEqual(['attendance.read'])
   })
 
@@ -112,7 +115,7 @@ describe('SkillRegistry', () => {
 
     const hasil = registry.select('daftar hadir lkbb', {
       isGroup: false,
-      allowedPermissions: new Set(['organization.read']),
+      allowedPermissions: new Set(['organization_read']),
     })
 
     // attendance.read tidak dimiliki → manage-attendance harus disaring.
@@ -125,12 +128,12 @@ describe('SkillRegistry', () => {
     await registry.load(root)
 
     const semuaIzin = new Set([
-      'attendance.read',
-      'attendance.update',
-      'attendance.create',
+      'attendance_read',
+      'attendance_update',
+      'attendance_create',
       'members.read',
       'members.create',
-      'whatsapp.send',
+      'whatsapp_send',
     ])
 
     const hasil = registry.select('osda cek daftar hadir lkbb', { isGroup: false, allowedPermissions: semuaIzin })
@@ -156,6 +159,8 @@ describe('SkillRegistry', () => {
 
     const skills = registry.select('daftar hadir', {
       isGroup: false,
+      // Permission memakai TITIK — identitas internal, tidak pernah dikirim
+      // ke model. Nama TOOL yang underscore. Doisnya sengaja dibedakan.
       allowedPermissions: new Set(['attendance.read', 'attendance.update']),
     })
 

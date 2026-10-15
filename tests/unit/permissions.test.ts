@@ -60,13 +60,13 @@ describe('expandPermissions', () => {
   })
 
   it('mempertahankan permission eksplisit apa adanya', () => {
-    const hasil = expandPermissions(['attendance.read', 'members.read'], ALL_PERMISSIONS)
-    expect(hasil.sort()).toEqual(['attendance.read', 'members.read'])
+    const hasil = expandPermissions(['attendance_read', 'members.read'], ALL_PERMISSIONS)
+    expect(hasil.sort()).toEqual(['attendance_read', 'members.read'])
   })
 
   it('menghapus duplikat', () => {
-    const hasil = expandPermissions(['attendance.read', 'attendance.read'], ALL_PERMISSIONS)
-    expect(hasil).toEqual(['attendance.read'])
+    const hasil = expandPermissions(['attendance_read', 'attendance_read'], ALL_PERMISSIONS)
+    expect(hasil).toEqual(['attendance_read'])
   })
 })
 
@@ -82,7 +82,7 @@ describe('prinsip keamanan role', () => {
     const member = findRoleTemplate(SYSTEM_ROLES.MEMBER)
     expect(member?.permissions).not.toContain('finance.read')
     expect(member?.permissions).not.toContain('members.delete')
-    expect(member?.permissions).not.toContain('whatsapp.bulk_send')
+    expect(member?.permissions).not.toContain('whatsapp_bulk_send')
   })
 
   it('hanya owner yang punya akses konfigurasi sistem', () => {

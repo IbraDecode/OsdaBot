@@ -3,10 +3,10 @@ name: manage-members
 description: Melihat, mencari, dan menambahkan anggota organisasi, termasuk membaca daftar nama dari teks yang dikirim pengguna.
 version: 1.0.0
 required_tools:
-  - organization.list_members
-  - organization.search_members
-  - organization.create_member
-  - organization.get_roles
+  - organization_list_members
+  - organization_search_members
+  - organization_create_member
+  - organization_get_roles
 required_permissions:
   - members.read
 contexts: [private, group]

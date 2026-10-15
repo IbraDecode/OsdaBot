@@ -52,9 +52,9 @@ function buatTool(nama: string, permission: string = PERMISSIONS.MEMBERS_READ) {
 /** Registry dengan tiga tool yang meniru pembagian skill. */
 function buatRegistry() {
   const registry = new ToolRegistry({ logger: loggerPalsu })
-  registry.register(buatTool('attendance.create', PERMISSIONS.ATTENDANCE_CREATE))
-  registry.register(buatTool('attendance.list_events', PERMISSIONS.ATTENDANCE_READ))
-  registry.register(buatTool('organization.list_members', PERMISSIONS.MEMBERS_READ))
+  registry.register(buatTool('attendance_create', PERMISSIONS.ATTENDANCE_CREATE))
+  registry.register(buatTool('attendance_list_events', PERMISSIONS.ATTENDANCE_READ))
+  registry.register(buatTool('organization_list_members', PERMISSIONS.MEMBERS_READ))
   return registry
 }
 
@@ -70,27 +70,27 @@ describe('ToolRegistry.schemasFor', () => {
     // berlaku" — sehingga pesan yang tidak cocok dengan skill mana pun
     // justru mengirim 18 tool lalu timeout. Arahnya terbalik.
     return expect(
-      buatRegistry().schemasFor(ctx, { only: [], defaultToolNames: ['attendance.list_events'] }),
+      buatRegistry().schemasFor(ctx, { only: [], defaultToolNames: ['attendance_list_events'] }),
     ).resolves.toHaveLength(1)
   })
 
   it('mengirim tool yang diminta + default', async () => {
     const schemas = await buatRegistry().schemasFor(ctx, {
-      only: ['attendance.create'],
-      defaultToolNames: ['organization.list_members'],
+      only: ['attendance_create'],
+      defaultToolNames: ['organization_list_members'],
     })
 
     const nama = schemas.map((s) => s.function.name).sort()
-    expect(nama).toEqual(['attendance.create', 'organization.list_members'])
+    expect(nama).toEqual(['attendance_create', 'organization_list_members'])
   })
 
   it('tool di luar daftar tidak ikut terkirim', async () => {
     const schemas = await buatRegistry().schemasFor(ctx, {
-      only: ['attendance.create'],
+      only: ['attendance_create'],
       defaultToolNames: [],
     })
 
-    expect(schemas.map((s) => s.function.name)).toEqual(['attendance.create'])
+    expect(schemas.map((s) => s.function.name)).toEqual(['attendance_create'])
   })
 
   it('filter berlaku pada tool yang di luar daftar', async () => {

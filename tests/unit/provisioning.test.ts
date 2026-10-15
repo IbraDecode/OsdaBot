@@ -90,7 +90,7 @@ function buatPrismaPalsu() {
 
     organization: {
       upsert: async ({ where, create }: { where: { slug: string }; create: Record<string, unknown> }) => {
-        panggil.push('organization.upsert')
+        panggil.push('organization_upsert')
         const ada = state.organizations.find((o) => o.slug === where.slug)
         if (ada) {
           return { id: ada.id as string, slug: ada.slug as string, name: ada.name as string }

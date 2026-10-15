@@ -3,7 +3,7 @@ name: compose-message
 description: Menyusun pengumuman, undangan, dan pesan resmi dalam format WhatsApp yang siap kirim, termasuk menyesuaikan tingkat formalitas.
 version: 1.0.0
 required_tools:
-  - whatsapp.send_message
+  - whatsapp_send_message
 required_permissions:
   - whatsapp.send
 contexts: [private, group]
