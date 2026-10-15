@@ -25,11 +25,13 @@ import { buildKnowledgeTools } from '../tools/knowledge-tools.js'
 import { buildMediaTools } from '../tools/media-tools.js'
 import { buildPaymentTools } from '../tools/payment-tools.js'
 import { buildGroupTools } from '../tools/group-tools.js'
+import { buildTaskTools } from '../tools/task-tools.js'
 import type { FinanceService } from '../finance/service.js'
 import type { DocumentService } from '../documents/service.js'
 import type { KnowledgeService } from '../knowledge/service.js'
 import type { BaturPayAdapter } from '../payments/baturpay.js'
 import type { GroupLinkService } from '../groups/service.js'
+import type { TaskService } from '../tasks/service.js'
 import { prismaForRegistry } from '../bootstrap.js'
 import type { ToolRegistry } from '../tools/registry.js'
 import type { MessagePipeline } from './message-pipeline.js'
@@ -97,6 +99,7 @@ export interface MessageHandlerDeps {
   knowledge: KnowledgeService
   payments: BaturPayAdapter
   groups: GroupLinkService
+  tasks: TaskService
   /**
    * Engine persetujuan.
    *
@@ -144,6 +147,9 @@ export class MessageHandler {
     )
     this.deps.tools.registerAll(
       buildGroupTools({ groups: this.deps.groups, whatsapp: this.deps.whatsapp }) as never,
+    )
+    this.deps.tools.registerAll(
+      buildTaskTools({ tasks: this.deps.tasks, identity: this.deps.identity }) as never,
     )
     this.deps.tools.registerAll(
       buildDocumentTools({

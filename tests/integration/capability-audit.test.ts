@@ -46,11 +46,6 @@ const IZIN_TANPA_TOOL = new Map<string, string>([
   ['EVENTS_CREATE', 'Kegiatan dibuat lewat daftar hadir, bukan sebagai entitas tersendiri.'],
   ['EVENTS_UPDATE', 'Sama — kegiatan terikat pada daftar hadir.'],
   ['EVENTS_DELETE', 'Sama — menghapus kegiatan berarti menghapus daftar hadirnya.'],
-  ['TASKS_READ', 'Sistem tugas belum diimplementasikan sama sekali.'],
-  ['TASKS_CREATE', 'Sistem tugas belum diimplementasikan sama sekali.'],
-  ['TASKS_UPDATE', 'Sistem tugas belum diimplementasikan sama sekali.'],
-  ['TASKS_ASSIGN', 'Sistem tugas belum diimplementasikan sama sekali.'],
-  ['TASKS_DELETE', 'Sistem tugas belum diimplementasikan sama sekali.'],
   ['FINANCE_APPROVE', 'Pencatatan pembayaran tidak butuh persetujuan; tidak ada ambang nominal yang ditetapkan.'],
   ['FINANCE_EXPORT', 'Ekspor laporan keuangan belum ada. Rekap absensi sudah bisa sebagai PDF.'],
   ['DOCUMENTS_EXPORT', 'Dokumen sudah bisa dikirim lewat WhatsApp. Ekspor massal belum.'],
@@ -102,8 +97,6 @@ const TABEL_MATI = new Map<string, string>([
 
   // ── Sistem tugas & alur kerja: dirancang, belum dibangun ─────────────────
   ['ActiveTask', 'Sistem tugas belum diimplementasikan.'],
-  ['TaskAssignment', 'Sistem tugas belum diimplementasikan.'],
-  ['TaskDependency', 'Sistem tugas belum diimplementasikan.'],
   ['WorkflowRun', 'Mesin alur kerja belum diimplementasikan.'],
   ['AgentTask', 'Agent belum menyimpan tugasnya; satu pesan diproses sekali jalan.'],
   ['AgentStep', 'Langkah agent belum dipersistensi; log saja yang ada.'],

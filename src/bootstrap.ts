@@ -12,6 +12,7 @@ import { ToolApprovalExecutor } from './approvals/executor.js'
 import { AttendanceService } from './attendance/service.js'
 import { FinanceService } from './finance/service.js'
 import { GroupLinkService } from './groups/service.js'
+import { TaskService } from './tasks/service.js'
 import { DocumentService, LocalStorageDriver } from './documents/service.js'
 import { KnowledgeService } from './knowledge/service.js'
 import { BaturPayAdapter } from './payments/baturpay.js'
@@ -120,6 +121,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<Applica
 
   // --- Lapis pipeline -----------------------------------------------------
   const groups = new GroupLinkService(prisma)
+  const tasks = new TaskService(prisma)
   const documents = new DocumentService(prisma, new LocalStorageDriver(env.STORAGE_LOCAL_DIR))
   const knowledge = new KnowledgeService(prisma)
   const payments = new BaturPayAdapter({ prisma })
@@ -160,6 +162,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<Applica
     knowledge,
     payments,
     groups,
+    tasks,
     approvals,
     reminders,
   })
