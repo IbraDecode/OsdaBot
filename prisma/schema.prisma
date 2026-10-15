@@ -1050,6 +1050,24 @@ model WorkflowRun {
   @@index([workflowId, startedAt])
 }
 
+/// Bendera sistem yang bertahan melewati restart.
+///
+/// Sengaja TIDAK punya `organizationId`: ini kendali operasional tingkat
+/// sistem, bukan data organisasi. Tombol darurat yang ikut terhapus bersama
+/// organisasinya bukan tombol darurat.
+///
+/// Yang membuatnya penting: nilai TIDAPATNYA di memory. Bot yang restart
+/// setelah insiden akan membaca flag yang sama dan tetap berhenti — tanpa
+/// perlu ada yang ingat menyalakannya lagi.
+model SystemFlag {
+  key       String   @id
+  value     Json
+  /// Siapa yang mengubah terakhir. Akuntabilitas untuk perubahan-operasional.
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+}
+
 /// Outbox: mutasi DB dan pengiriman pesan dikoordinasikan lewat satu transaksi.
 model OutboxEvent {
   id             String          @id @default(uuid()) @db.Uuid

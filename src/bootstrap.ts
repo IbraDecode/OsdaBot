@@ -13,6 +13,7 @@ import { AttendanceService } from './attendance/service.js'
 import { FinanceService } from './finance/service.js'
 import { GroupLinkService } from './groups/service.js'
 import { TaskService } from './tasks/service.js'
+import { SafeModeService } from './system/safe-mode.js'
 import { DocumentService, LocalStorageDriver } from './documents/service.js'
 import { KnowledgeService } from './knowledge/service.js'
 import { BaturPayAdapter } from './payments/baturpay.js'
@@ -56,6 +57,8 @@ export interface Application {
   outbox: OutboxDispatcher
   pipeline: MessagePipeline
   handler: MessageHandler
+  /** Tombol darurat operasional. */
+  safeMode: SafeModeService
   whatsapp: WhatsAppProvider
   shutdown: () => Promise<void>
 }
@@ -81,8 +84,27 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<Applica
   const attendance = new AttendanceService({ prisma })
   const finance = new FinanceService(prisma)
 
+  // --- Tombol darurat -----------------------------------------------------
+  //
+  // Dibuat paling awal, karena semua lapisan di bawahnya butuh gerbangnya.
+  // Flag dibaca dari database, jadi bot yang restart setelah insiden langsung
+  // tahu bahwa ia harus tetap diam sampai operator mengubahnya.
+  const safeMode = new SafeModeService(prisma)
+  const snappedAwal = await safeMode.snapshot()
+  if (snappedAwal.enabled) {
+    log.error(
+      { since: snappedAwal.since, reason: snappedAwal.reason, changedBy: snappedAwal.changedBy },
+      'MODE AMAN MASIH AKTIF dari sesi sebelumnya — bot tidak akan bertindak',
+    )
+  }
+
   // --- Lapis tool ---------------------------------------------------------
-  const tools = new ToolRegistry({ prisma, logger: log, ...(options.maxToolCalls ? { maxCallsPerRun: options.maxToolCalls } : {}) })
+  const tools = new ToolRegistry({
+    prisma,
+    logger: log,
+    safeMode,
+    ...(options.maxToolCalls ? { maxCallsPerRun: options.maxToolCalls } : {}),
+  })
 
   // --- Lapis AI -----------------------------------------------------------
   const llm = options.llmProvider ?? new OpenAiCompatibleProvider()
@@ -114,6 +136,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<Applica
     tools,
     authorization,
     defaultTimezone: env.APP_TIMEZONE,
+    safeMode,
   })
 
   const approvals = new ApprovalEngine({ prisma, whatsapp, executor: approvalExecutor })
@@ -147,7 +170,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<Applica
 
   // --- Lapis outbox --------------------------------------------------------
   const outbox = new OutboxDispatcher(prisma)
-  outbox.register(new WhatsAppOutboxHandler({ prisma, whatsapp }))
+  outbox.register(new WhatsAppOutboxHandler({ prisma, whatsapp, safeMode }))
 
   const handler = new MessageHandler({
     pipeline,
@@ -163,6 +186,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<Applica
     payments,
     groups,
     tasks,
+    safeMode,
     approvals,
     reminders,
   })
@@ -228,6 +252,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<Applica
     pipeline,
     handler,
     whatsapp,
+    safeMode,
     shutdown,
   }
 }

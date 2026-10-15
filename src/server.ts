@@ -26,6 +26,27 @@ interface FastifyRequestWithRawBody {
   rawBody?: Buffer
 }
 
+/**
+ * Bandingkan bearer token secara waktu-konstan.
+ *
+ * `timingSafeEqual` menolak panjang berbeda, jadi panjangnya dibandingkan
+ * lebih dulu. Panjang token bukan rahasia — yang tidak boleh bocor adalah
+ * apakah tebakan panjangnya benar.
+ */
+function cocokToken(request: { headers: Record<string, unknown> }): boolean {
+  const header = request.headers.authorization
+  if (typeof header !== 'string') return false
+
+  const token = env.SYSTEM_ADMIN_TOKEN
+  if (!token) return false
+
+  const diberikan = header.startsWith('Bearer ') ? header.slice(7) : ''
+  const a = Buffer.from(diberikan)
+  const b = Buffer.from(token)
+  if (a.length !== b.length) return false
+  return timingSafeEqual(a, b)
+}
+
 export async function createServer(app: Application): Promise<FastifyInstance> {
   const server = Fastify({
     logger: false,
@@ -49,6 +70,47 @@ export async function createServer(app: Application): Promise<FastifyInstance> {
       checks,
     })
   })
+
+  // --- Mode aman (endpoint administrative) --------------------------------
+  //
+  // Dibuat HANYA kalau `SYSTEM_ADMIN_TOKEN` diset. Kalau kosong, route-nya
+  // tidak ada — bukan ada tapi menolak. Route yang "ada tapi 403" masih
+  // memberi tahu pemindai bahwa ada sesuatu yang bisa dicoba.
+  //
+  // Bandingkan dengan `kill`: yang ini tidak memutus proses, tidak memutus
+  // koneksi WhatsApp, dan tidak menghapus apa pun. Itu justru alasan ia perlu
+  // ada sebagai endpoint — saat-saat kill justru waktu yang paling tidak tepat
+  // untuk melakukan hal yang masih bisa diselamatkan.
+  if (env.SYSTEM_ADMIN_TOKEN) {
+    server.get('/admin/safe-mode', async (request, reply) => {
+      if (!cocokToken(request)) {
+        return reply.code(401).send({ ok: false, error: 'UNAUTHORIZED' })
+      }
+      return { ok: true, ...(await app.safeMode.snapshot()) }
+    })
+
+    server.post('/admin/safe-mode', async (request, reply) => {
+      if (!cocokToken(request)) {
+        return reply.code(401).send({ ok: false, error: 'UNAUTHORIZED' })
+      }
+
+      const body = (request.body ?? {}) as { enabled?: unknown; reason?: unknown }
+      if (typeof body.enabled !== 'boolean') {
+        return reply.code(400).send({ ok: false, error: 'BAD_REQUEST', detail: 'enabled harus boolean' })
+      }
+
+      const alasan = typeof body.reason === 'string' ? body.reason.slice(0, 300) : null
+      const status = await app.safeMode.set({
+        enabled: body.enabled,
+        reason: alasan,
+        changedBy: 'http',
+      })
+
+      return { ok: true, ...status }
+    })
+  } else {
+    log.info('SYSTEM_ADMIN_TOKEN tidak diset — endpoint /admin/* tidak dibuat')
+  }
 
   // --- Webhook pembayaran ---------------------------------------------------
 

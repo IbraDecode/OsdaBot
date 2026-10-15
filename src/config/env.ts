@@ -97,6 +97,18 @@ const envSchema = z
     SERVER_PORT: z.coerce.number().int().positive().default(8080),
     SERVER_BODY_LIMIT_BYTES: z.coerce.number().int().positive().default(2 * 1024 * 1024),
 
+    /**
+     * Token untuk endpoint administrative (menyalakan/mematikan mode aman).
+     *
+     * Kosong berarti endpoint itu **tidak dibuat sama sekali** — bukan
+     * "dibuat tapi terbuka". Endpoint yang bisa mematikan bot dari mana saja
+     * adalah kendali yang lebih kuat dari bot itu sendiri.
+     *
+     * Perlu karena `SERVER_HOST` bisa diubah ke `0.0.0.0`. Di localhost saja
+     * tanpa token masih wajar; di jaringan, tidak.
+     */
+    SYSTEM_ADMIN_TOKEN: z.string().min(16).optional(),
+
     // --- Rate limit ---
     RATE_LIMIT_MESSAGES_PER_MINUTE: z.coerce.number().int().positive().default(20),
     RATE_LIMIT_TOOL_CALLS_PER_MINUTE: z.coerce.number().int().positive().default(60),

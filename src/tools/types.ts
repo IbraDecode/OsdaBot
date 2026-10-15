@@ -86,6 +86,20 @@ export type ToolErrorCode =
   | 'PROVIDER_UNAVAILABLE'
   | 'UNKNOWN_OUTCOME'
   | 'INTERNAL_ERROR'
+  /**
+   * Sistem sedang dalam mode aman.
+   *
+   * Kode tersendiri, bukan `RATE_LIMITED` atau `INTERNAL_ERROR`, karena
+   * maknanya berbeda bagi pemanggil:
+   *
+   * - `retryable: false` — mencoba lagi tidak akan pernah berhasil sampai
+   *   operator mengubahnya, jadi tidak ada gunanya meminta model untuk
+   *   "coba lagi".
+   * - Penyebabnya **bukan** salah di tool, input, atau izin. Kalau
+   *   dicampur dengan `INTERNAL_ERROR`, agent akan mencoba mendiagnosis
+   *   sendiri lalu memberi saran yang salah ke pengguna.
+   */
+  | 'SAFE_MODE'
 
 export interface ToolDefinition<TInput = unknown, TOutput = unknown> {
   /** Nama unik, pakai titik: "attendance.update". */

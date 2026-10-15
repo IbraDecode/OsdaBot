@@ -18,6 +18,9 @@ import type { Prisma } from '@prisma/client'
 import { prisma } from '../database/client.js'
 import { logger } from '../observability/logger.js'
 import { describeDenial } from '../security/authorization.js'
+import type { SafeModeGate } from '../system/safe-mode.js'
+
+export type { SafeModeGate }
 import { PERMISSIONS, type Permission } from '../security/permissions.js'
 import {
   fail,
@@ -60,6 +63,14 @@ export interface ToolRegistryDeps {
   approvals?: ApprovalBroker
   /** Batas jumlah pemanggilan tool dalam satu putaran agent. */
   maxCallsPerRun?: number
+  /**
+   * Tombol darurat.
+   *
+   * Disuntikkan opsional supaya registry tetap bisa dipakai tanpa database —
+   * sebagian test memang memverifikasi penolakan otorisasi tanpa perlu
+   * menyentuh sistem lain. Kalau tidak ada, tidak ada gerbang.
+   */
+  safeMode?: SafeModeGate
 }
 
 export class ToolRegistry {
@@ -194,6 +205,25 @@ export class ToolRegistry {
     runCount = 0,
   ): Promise<ToolResult<unknown>> {
     const mulai = Date.now()
+
+    // Gerbang darurat, diperiksa sebelum segalanya — termasuk sebelum validasi
+    // input. Kalau mode aman aktif, "kenapa tool ini tidak jalan" adalah
+    // jawaban yang benar; membocorkan error lain hanya menyesatkan.
+    if (this.deps.safeMode && (await this.deps.safeMode.aktif())) {
+      await this.deps.safeMode.catatDiblokir({
+        apa: 'tool',
+        detail: `tool ${name} diblokir mode aman`,
+        chatJid: context.chatJid,
+        actorUserId: context.actorUserId,
+        organizationId: context.organizationId,
+      })
+      this.logger.error({ tool: name, chatJid: context.chatJid }, 'tool diblokir: mode aman aktif')
+      return fail(
+        'SAFE_MODE',
+        'Sistem sedang dalam mode aman — tidak ada tindakan yang dijalankan sampai operator mengematikannya.',
+        { retryable: false },
+      )
+    }
 
     if (runCount >= this.maxCallsPerRun) {
       return fail(

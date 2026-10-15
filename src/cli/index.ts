@@ -53,6 +53,9 @@ interface Command {
 
 const commands = new Map<string, Command>()
 
+/** Argumen bebas yang menyusul nama perintah. */
+let argumenBebas: string[] = []
+
 function register(name: string, description: string, run: () => Promise<void>): void {
   commands.set(name, { name, description, run })
 }
@@ -622,9 +625,16 @@ register('outbox:tick', 'Jalankan satu siklus dispatcher outbox', async () => {
   const { OutboxDispatcher } = await import('../outbox/dispatcher.js')
   const { WhatsAppOutboxHandler } = await import('../outbox/handlers.js')
   const { BaileysProvider } = await import('../whatsapp/baileys-provider.js')
+  const { SafeModeService } = await import('../system/safe-mode.js')
 
   const dispatcher = new OutboxDispatcher(prisma as never)
-  dispatcher.register(new WhatsAppOutboxHandler({ prisma: prisma as never, whatsapp: new BaileysProvider() }))
+  dispatcher.register(
+    new WhatsAppOutboxHandler({
+      prisma: prisma as never,
+      whatsapp: new BaileysProvider(),
+      safeMode: new SafeModeService(prisma as never),
+    }),
+  )
 
   const hasil = await dispatcher.tick()
   console.log('')
@@ -641,6 +651,60 @@ register('db:seed', 'Isi data contoh (organisasi fiktif) untuk pengembangan', as
   const { seed } = await import('../database/seed.js')
   await seed()
   console.log('Data contoh berhasil dibuat.')
+  await prisma.$disconnect()
+})
+
+// ---------------------------------------------------------------------------
+// Mode aman — tombol darurat
+// ---------------------------------------------------------------------------
+
+register('safe-mode:status', 'Status mode aman (tombol darurat)', async () => {
+  const { SafeModeService } = await import('../system/safe-mode.js')
+  const service = new SafeModeService(prisma)
+  const status = await service.snapshot()
+
+  console.log('')
+  if (!status.enabled) {
+    console.log('  Mode aman: MATI — bot bertindak normal.')
+  } else {
+    console.log('  Mode aman: AKTIF — bot tidak bertindak.')
+    console.log(`  Desde      : ${status.since?.toISOString() ?? 'tidak diketahui'}`)
+    console.log(`  Alasan     : ${status.reason ?? '(tidak dicatat)'}`)
+    console.log(`  Diubah oleh: ${status.changedBy ?? '(tidak dicatat)'}`)
+    console.log('')
+    console.log('  Yang tetap jalan: pencatatan pesan masuk, endpoint HTTP.')
+    console.log('  Yang berhenti: panggilan AI, semua tool, semua pengiriman pesan,')
+    console.log('                termasuk pesan yang sudah antre di outbox.')
+  }
+  console.log('')
+  await prisma.$disconnect()
+})
+
+register('safe-mode:on', 'Nyalakan mode aman — bot berhenti bertindak (TOMBOL DARURAT)', async () => {
+  const { SafeModeService } = await import('../system/safe-mode.js')
+  const alasan = argumenBebas.join(' ').trim() || null
+  const service = new SafeModeService(prisma)
+  const status = await service.set({ enabled: true, reason: alasan, changedBy: 'cli' })
+
+  console.log('')
+  console.log('  MODE AMAN AKTIF.')
+  console.log(`  Desde: ${status.since?.toISOString()}`)
+  if (alasan) console.log(`  Alasan: ${alasan}`)
+  console.log('')
+  console.log('  Pesan masuk tetap dicatat. Tidak ada AI, tool, atau pesan keluar')
+  console.log('  yang akan berjalan. Matikan lagi dengan: pnpm osda safe-mode:off')
+  console.log('')
+  await prisma.$disconnect()
+})
+
+register('safe-mode:off', 'Matikan mode aman — bot bertindak lagi', async () => {
+  const { SafeModeService } = await import('../system/safe-mode.js')
+  const service = new SafeModeService(prisma)
+  await service.set({ enabled: false, reason: null, changedBy: 'cli' })
+
+  console.log('')
+  console.log('  Mode aman mati. Bot bertindak lagi dari pesan berikutnya.')
+  console.log('')
   await prisma.$disconnect()
 })
 
@@ -829,6 +893,10 @@ register('help', 'Tampilkan daftar perintah', async () => {
 async function main(): Promise<void> {
   const requested = process.argv[2] ?? 'help'
   const command = commands.get(requested)
+
+  // Argumen bebas setelah nama perintah, untuk perintah yang butuh penjelasan
+  // bebas — mis. `safe-mode:on bot mengirim dokumen ke grup yang salah`.
+  argumenBebas = process.argv.slice(3)
 
   if (!command) {
     console.error(`Perintah tidak dikenal: ${requested}`)

@@ -28,6 +28,22 @@ async function main(): Promise<void> {
   const app = await bootstrap()
   const server = await createServer(app)
 
+  // Server yang terekspos ke jaringan tanpa token administrative akan
+  // membiarkan siapa saja mematikan bot. Dan hal itu bisa terjadi tak
+  // sengaja: menyalin konfigurasi dari mesin lokal ke VPS sering ikut
+  // menyalin `SERVER_HOST=0.0.0.0` tanpa menyalin tokennya.
+  //
+  // Diberi peringatan, bukan error: `/health` dan webhook pembayaran tetap
+  // berguna di jaringan, dan operator mungkin memang administering lewat
+  // SSH tunnel. Yang ditolak hanya akses ke kendali tanpa token.
+  if (!env.SYSTEM_ADMIN_TOKEN && bukanLoopback(env.SERVER_HOST)) {
+    log.warn(
+      { host: env.SERVER_HOST },
+      'SERVER_HOST bukan loopback tapi SYSTEM_ADMIN_TOKEN kosong — endpoint /admin/* tidak dibuat. ' +
+        'Set token kalau server ini terjangkau dari jaringan.',
+    )
+  }
+
   // Event WhatsApp → handler.
   app.whatsapp.on('message', (message) => {
     void app.handler.handle(message).catch((error) => {
@@ -156,6 +172,11 @@ async function main(): Promise<void> {
     log.fatal({ err: error }, 'uncaught exception')
     void shutdown('uncaughtException')
   })
+}
+
+/** Apakah host hanya mendengarkan di mesin ini sendiri? */
+function bukanLoopback(host: string): boolean {
+  return !['127.0.0.1', 'localhost', '::1', '0:0:0:0:0:0:0:1'].includes(host.trim())
 }
 
 main().catch((error) => {

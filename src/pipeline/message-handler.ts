@@ -32,6 +32,7 @@ import type { KnowledgeService } from '../knowledge/service.js'
 import type { BaturPayAdapter } from '../payments/baturpay.js'
 import type { GroupLinkService } from '../groups/service.js'
 import type { TaskService } from '../tasks/service.js'
+import type { SafeModeService } from '../system/safe-mode.js'
 import { prismaForRegistry } from '../bootstrap.js'
 import type { ToolRegistry } from '../tools/registry.js'
 import type { MessagePipeline } from './message-pipeline.js'
@@ -100,6 +101,7 @@ export interface MessageHandlerDeps {
   payments: BaturPayAdapter
   groups: GroupLinkService
   tasks: TaskService
+  safeMode: SafeModeService
   /**
    * Engine persetujuan.
    *
@@ -212,6 +214,40 @@ export class MessageHandler {
       chatJid: message.chatJid,
       pushName: message.senderPushName,
     })
+
+    // ── Gerbang mode aman ─────────────────────────────────────────────────
+    //
+    // Diletakkan SETELAH pesan tersimpan dan SETELAH identitas terpecah, tapi
+    // SEBELUM satu pun hal yang bisa berdampak ke orang lain: panggilan AI,
+    // tool, atau balasan.
+    //
+    // Letaknya disengaja:
+    //
+    // - **Setelah** penyimpanan, karena pesan yang masuk tetap harus tercatat.
+    //   Kalau tidak, insidennya tidak punya jejak — dan "bot diam" jadi tidak
+    //   bisa dibedakan dari "bot mati".
+    // - **Setelah** identitas, supaya catatan auditnya punya organisasi dan
+    //   pelaku yang bisa ditelusuri.
+    // - **Sebelum** AI, jadi tidak ada biaya dan tidak ada balasan salah yang
+    //   sampai ke orang.
+    //
+    // Ada gerbang serupa di ToolRegistry dan di outbox. Yang ini lapisan
+    // paling awal; yang lain menangkap jalur yang tidak lewat sini (mis.
+    // approval yang sudah disetujui sebelum mode aman dinyalakan).
+    if (await this.deps.safeMode.aktif()) {
+      await this.deps.safeMode.catatDiblokir({
+        apa: 'pesan-masuk',
+        detail: 'pesan masuk dicatat, tidak diproses',
+        chatJid: message.chatJid,
+        actorUserId: resolved.identity.userId,
+        organizationId: resolved.organization?.organizationId ?? null,
+      })
+      childLog.error(
+        { userId: resolved.identity.userId },
+        'pesan tidak diproses: mode aman aktif',
+      )
+      return
+    }
 
     // Kalau pengirim punya beberapa keanggotaan dan tidak sedang di grup yang
     // tertaut, jangan asal pilih organisasi.

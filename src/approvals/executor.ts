@@ -15,6 +15,7 @@
 import type { PrismaClient } from '@prisma/client'
 import type { ApprovalExecutor } from './engine.js'
 import type { AuthorizationService } from '../security/authorization.js'
+import type { SafeModeGate } from '../system/safe-mode.js'
 import type { ToolRegistry } from '../tools/registry.js'
 import { logger } from '../observability/logger.js'
 
@@ -26,6 +27,14 @@ export interface ToolApprovalExecutorDeps {
   authorization: AuthorizationService
   /** Zona waktu fallback kalau baris approval tidak punya. */
   defaultTimezone?: string
+  /**
+   * Tombol darurat.
+   *
+   * Opsional karena jalur ini memang ada sebelum mode aman ada — tapi kalau
+   * di produksi biarkan kosong, persetujuan yang sudah diberikan tetap jalan
+   * meski operator mengira sudah mematikan semua.
+   */
+  safeMode?: SafeModeGate
 }
 
 /** Kolom yang dipakai executor — dinyatakan eksplisit agar mudah diuji. */
@@ -89,6 +98,32 @@ export class ToolApprovalExecutor implements ApprovalExecutor {
     if (!definition) {
       log.error({ tool: input.toolName }, 'tool yang disetujui tidak terdaftar')
       return { ok: false, summary: 'Tindakan itu tidak lagi tersedia.' }
+    }
+
+    // Gerbang mode aman.
+    //
+    // Jalur ini penting dan sering terlewat: executor memanggil
+    // `definition.execute` **langsung**, bukan lewat `ToolRegistry.execute`.
+    // Jadi apa pun yang dipasang di registry TIDAK menangkapnya.
+    //
+    // Kalau mode aman hanya dipasang di registry, persetujuan yang sudah
+    // diberikan sebelum mode aman dinyalakan akan tetap dieksekusi — persis
+    // tindakan yang paling ingin dihentikan.
+    if (this.deps.safeMode && (await this.deps.safeMode.aktif())) {
+      await this.deps.safeMode.catatDiblokir({
+        apa: 'approval',
+        detail: `approval untuk ${input.toolName} tidak dijalankan`,
+        chatJid: approval.chatJid ?? null,
+        actorUserId: approval.requestedBy,
+        organizationId: approval.organizationId,
+      })
+      log.error({ approvalId: approval.id, tool: input.toolName }, 'approval diblokir: mode aman aktif')
+      return {
+        ok: false,
+        summary:
+          'Sistem sedang dalam mode aman, jadi persetujuan ini belum dijalankan. ' +
+          'Coba lagi setelah operator mengematikannya.',
+      }
     }
 
     // Otorisasi diulang, bukan diasumsikan sudah lolos.

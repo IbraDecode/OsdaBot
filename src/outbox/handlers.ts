@@ -21,6 +21,7 @@
  */
 import type { PrismaClient } from '@prisma/client'
 import type { WhatsAppProvider } from '../whatsapp/types.js'
+import type { SafeModeGate } from '../system/safe-mode.js'
 import { logger } from '../observability/logger.js'
 import type { DispatchResult, OutboxHandler } from './dispatcher.js'
 import { TOPICS } from './dispatcher.js'
@@ -30,6 +31,16 @@ const log = logger.child({ module: 'outbox:whatsapp' })
 export interface WhatsAppOutboxDeps {
   prisma: PrismaClient
   whatsapp: WhatsAppProvider
+  /**
+   * Tombol darurat.
+   *
+   * Wajib, bukan opsional. Outbox adalah **antrean** — pesan yang antre saat
+   * bot masih normal akan tetap dikirim setelah mode aman dinyalakan kalau
+   * tidak dicek di sini. Menyalakan mode aman lalu sepuluh orang masih
+   * menerima pesan yang antre adalah kegagalan yang lebih buruk daripada
+   * tidak punya mode aman sama sekali, karena operator mengira sudah aman.
+   */
+  safeMode: SafeModeGate
 }
 
 /**
@@ -82,6 +93,23 @@ export class WhatsAppOutboxHandler implements OutboxHandler {
       // Event tanpa tujuan atau isi tidak akan pernah berhasil. Retry
       // hanya mengaburkan masalahnya.
       return { outcome: 'failed', error: 'Event tidak punya chatJid atau text' }
+    }
+
+    // Gerbang mode aman, diperiksa sebelum memanggil provider.
+    //
+    // Outbox sengaja memisahkan pengirim dan penerima pesan. Efektifnya,
+    // yang sama. Efektifnya, pesan bisa antre berjam-jam lalu dikirim pada
+    // saat operator justru menyalakan mode aman.
+    if (await this.deps.safeMode.aktif()) {
+      await this.deps.safeMode.catatDiblokir({
+        apa: 'outbox',
+        // Cuma tujuan dan panjang. Isi pesan TIDAK ikut — `AuditLog` dibaca
+        // banyak orang dan pesan bisa berisi data pribadi anggota.
+        detail: `pesan antrean tidak dikirim ke ${payload.chatJid} (${String(payload.text).length} karakter)`,
+        chatJid: payload.chatJid,
+        organizationId: event.organizationId,
+      })
+      return { outcome: 'failed', error: 'SAFE_MODE_ON' }
     }
 
     let result: Awaited<ReturnType<WhatsAppProvider['sendText']>>
