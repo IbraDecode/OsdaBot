@@ -21,6 +21,11 @@
  *   pnpm osda reminder:tick     — jalankan worker sekali
  *   pnpm osda outbox:list        — event yang perlu rekonsiliasi
  *   pnpm osda outbox:tick        — jalankan dispatcher sekali
+ *   pnpm osda group:pending     — grup yang mengirim pesan tapi belum tertaut
+ *   pnpm osda group:list        — grup yang sudah tertaut
+ *   pnpm osda group:link        — hubungkan grup ke organisasi
+ *   pnpm osda group:activation  — ubah kapan bot merespons di grup
+ *   pnpm osda group:unlink      — lepas tautan grup
  *   pnpm osda db:seed           — isi data contoh
  */
 
@@ -36,6 +41,7 @@ import { OrganizationProvisioner } from '../organization/provisioning.js'
 import { MemberProvisioner } from '../organization/member-onboarding.js'
 import { ReminderService } from '../reminders/service.js'
 import { MessageHandler } from '../pipeline/message-handler.js'
+import { GroupLinkError, GroupLinkService } from '../groups/service.js'
 
 const log = logger.child({ module: 'cli' })
 
@@ -213,6 +219,29 @@ register('whatsapp:files', 'Daftar berkas session (untuk diagnosis)', async () =
   const files = await listSessionFiles(env.WHATSAPP_SESSION_DIR)
   box('SESSION FILES', files.length > 0 ? files : ['(folder kosong)'])
 })
+
+/**
+ * Cari organisasi berdasarkan id, slug, atau nama.
+ *
+ * `id` hanya ikut dicocokkan kalau nilainya benar-benar berbentuk UUID.
+ * Kolom `id` bertipe `@db.Uuid`, jadi memberi slug seperti
+ * "osis-smkn-2-mataram" ke sana membuat PostgreSQL menolak dengan
+ * "Error creating UUID" — bukan pesan yang membantu operator sama sekali.
+ */
+export async function cariOrganisasi(kunci: string): Promise<{ id: string; name: string; slug: string } | null> {
+  const kekunciUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(kunci)
+
+  return prisma.organization.findFirst({
+    where: {
+      OR: [
+        ...(kekunciUuid ? [{ id: kunci }] : []),
+        { slug: kunci },
+        { name: kunci },
+      ],
+    },
+    select: { id: true, name: true, slug: true },
+  })
+}
 
 register('org:list', 'Daftar organisasi yang terdaftar', async () => {
   const organizations = await prisma.organization.findMany({
@@ -612,6 +641,178 @@ register('db:seed', 'Isi data contoh (organisasi fiktif) untuk pengembangan', as
   const { seed } = await import('../database/seed.js')
   await seed()
   console.log('Data contoh berhasil dibuat.')
+  await prisma.$disconnect()
+})
+
+
+// ---------------------------------------------------------------------------
+// Grup WhatsApp
+// ---------------------------------------------------------------------------
+
+register('group:pending', 'Grup yang mengirim pesan tapi belum tertaut', async () => {
+  const service = new GroupLinkService(prisma)
+  const grup = await service.listUnlinked(20)
+
+  const lines = grup.map(
+    (g) =>
+      `${g.subject ?? '(tanpa subjek)'}\n    jid: ${g.jid}\n    pesan: ${g.messageCount} | terakhir: ${g.lastSeenAt.toISOString().slice(0, 16).replace('T', ' ')}${g.lastSenderName ? ` | pengirim: ${g.lastSenderName}` : ''}`,
+  )
+
+  if (lines.length === 0) {
+    console.log('Tidak ada grup yang menunggu ditautkan.')
+    console.log('')
+    console.log('Kalau bot tidak merespons di grup, cek urutan ini:')
+    console.log('  1. Grup masuk daftar ini? → belum tertaut, jalankan group:link')
+    console.log('  2. Sudah tertaut?         → pastikan pesan menyebut "osda" atau @mention')
+    console.log('  3. Sudah disebut?        → cek log bot, cari "pesan dilewati"')
+  } else {
+    box('GRUP MENUNGGU TAUTAN', lines)
+    console.log('')
+    console.log('Tautkan dengan:')
+    console.log('  pnpm osda group:link --jid=<JID> --org=<NAMA ATAU ID>')
+  }
+  await prisma.$disconnect()
+})
+
+register('group:list', 'Daftar grup yang sudah tertaut ke organisasi', async () => {
+  const args = parseArgs(process.argv.slice(3))
+  const service = new GroupLinkService(prisma)
+
+  let organizationId: string | undefined
+  if (args.org) {
+    const org = await cariOrganisasi(args.org)
+    if (!org) {
+      console.error(`Organisasi "${args.org}" tidak ditemukan. Cek dengan org:list.`)
+      await prisma.$disconnect()
+      process.exit(1)
+    }
+    organizationId = org.id
+  }
+
+  const grup = await service.listLinked(organizationId)
+  const lines = grup.map(
+    (g) =>
+      `${g.subject ?? '(tanpa subjek)'}\n    jid: ${g.jid}\n    org: ${g.organizationName} | aktivasi: ${g.activation}${g.isArchived ? ' | ARSIP' : ''}`,
+  )
+
+  box(`GRUP TERTAUT (${grup.length})`, lines.length > 0 ? lines : ['(belum ada grup tertaut)'])
+  await prisma.$disconnect()
+})
+
+register('group:link', 'Hubungkan grup WhatsApp ke organisasi', async () => {
+  const args = parseArgs(process.argv.slice(3))
+  const service = new GroupLinkService(prisma)
+
+  const jid = args.jid
+  if (!jid) {
+    console.error('Wajib: --jid=123456789-123456789@g.us')
+    console.error('')
+    console.error('Cara mencari JID grup:')
+    console.error('  1. Jalankan "pnpm osda group:pending" setelah ada pesan di grup.')
+    console.error('  2. JID grup muncul di sana.')
+    await prisma.$disconnect()
+    process.exit(1)
+  }
+
+  const kunciOrg = args.org
+  if (!kunciOrg) {
+    console.error('Wajib: --org=<NAMA, SLUG, atau ID>')
+    await prisma.$disconnect()
+    process.exit(1)
+  }
+
+  const org = await cariOrganisasi(kunciOrg)
+  if (!org) {
+    console.error(`Organisasi "${kunciOrg}" tidak ditemukan. Cek dengan org:list.`)
+    await prisma.$disconnect()
+    process.exit(1)
+  }
+
+  // Subjek diambil dari catatan grup yang belum tertaut supaya operator tidak
+  // perlu mengetiknya — tapi kalau tidak ada, biarkan kosong.
+  const catatan = await prisma.seenGroup.findUnique({ where: { jid }, select: { subject: true } })
+
+  try {
+    const hasil = await service.link({
+      organizationId: org.id,
+      jid,
+      subject: args.subject ?? catatan?.subject ?? null,
+      purpose: args.purpose ?? null,
+      ...(args.activation ? { activation: args.activation as 'MENTION_OR_REPLY' | 'ALL_MESSAGES' | 'OFF' } : {}),
+    })
+
+    console.log(`Grup "${hasil.subject ?? jid}" tertaut ke ${org.name}.`)
+    console.log(`  jid: ${hasil.jid}`)
+    console.log(`  aktivasi: ${hasil.activation}`)
+    console.log('')
+    console.log('Cara pakai di grup:')
+    console.log('  • Mention bot, atau tulis "osda ..." di awal pesan.')
+    console.log('  • Bot membalas semua pesan? Jadikan OFF:')
+    console.log(`      pnpm osda group:activation --jid=${jid} --mode=OFF`)
+  } catch (error) {
+    if (error instanceof GroupLinkError) {
+      console.error(`Gagal menautkan: ${error.message}`)
+      await prisma.$disconnect()
+      process.exit(1)
+    }
+    throw error
+  }
+  await prisma.$disconnect()
+})
+
+register('group:activation', 'Ubah kapan bot merespons di grup', async () => {
+  const args = parseArgs(process.argv.slice(3))
+  const service = new GroupLinkService(prisma)
+
+  const jid = args.jid
+  const mode = args.mode
+  if (!jid || !mode) {
+    console.error('Wajib: --jid=<JID> --mode=MENTION_OR_REPLY|ALL_MESSAGES|OFF')
+    console.log('')
+    console.log('  MENTION_OR_REPLY  Bot hanya merespons kalau disebut atau di-mention (default)')
+    console.log('  ALL_MESSAGES      Bot merespons SEMUA pesan (boros token, mengganggu)')
+    console.log('  OFF               Bot tidak pernah merespons otomatis')
+    await prisma.$disconnect()
+    process.exit(1)
+  }
+
+  try {
+    const hasil = await service.setActivation(jid, mode as 'MENTION_OR_REPLY' | 'ALL_MESSAGES' | 'OFF')
+    console.log(`Aktivasi grup ${hasil.jid} diubah ke ${hasil.activation}.`)
+  } catch (error) {
+    if (error instanceof GroupLinkError) {
+      console.error(`Gagal: ${error.message}`)
+      await prisma.$disconnect()
+      process.exit(1)
+    }
+    throw error
+  }
+  await prisma.$disconnect()
+})
+
+register('group:unlink', 'Lepas tautan grup (riwayat tidak ikut terhapus)', async () => {
+  const args = parseArgs(process.argv.slice(3))
+  const service = new GroupLinkService(prisma)
+
+  const jid = args.jid
+  if (!jid) {
+    console.error('Wajib: --jid=<JID>')
+    await prisma.$disconnect()
+    process.exit(1)
+  }
+
+  try {
+    await service.unlink(jid)
+    console.log(`Tautan grup ${jid} dilepas.`)
+    console.log('Data kehadiran dan pengingat di grup itu TIDAK dihapus.')
+  } catch (error) {
+    if (error instanceof GroupLinkError) {
+      console.error(`Gagal: ${error.message}`)
+      await prisma.$disconnect()
+      process.exit(1)
+    }
+    throw error
+  }
   await prisma.$disconnect()
 })
 

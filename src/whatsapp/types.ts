@@ -144,6 +144,15 @@ export interface WhatsAppProviderEvents {
   pairingCode: (code: string) => void
   /** QR string siap ditampilkan di terminal. */
   qr: (qr: string) => void
+  /**
+   * Grup yang terdeteksi (bot sudah ikut, atau baru menerima update).
+   *
+   * Dipakai supaya operator bisa menautkan grup tanpa harus menunggu ada
+   * pesan. Tanpa ini, satu-satunya cara discovering grup adalah mengirim
+   * pesan dulu — dan itu membingungkan untuk operator yang baru saja
+   * menambahkan bot ke grup.
+   */
+  groupDiscovered: (group: { jid: string; subject: string | null }) => void
 }
 
 type EventMap = {
@@ -184,6 +193,14 @@ export interface WhatsAppProvider {
   getGroupMetadata(groupJid: string): Promise<NormalizedGroupMetadata | null>
   getGroupParticipants(groupJid: string): Promise<string[]>
   getAllGroups(): Promise<NormalizedGroupMetadata[]>
+
+  /**
+   * Daftar grup yang diikuti akun ini, diringkas jadi JID + subjek.
+   *
+   * Hanya JID dan subjek yang dibutuhkan saat memindai grup yang belum
+   * tertaut; sisanya sudah tersedia lewat `getAllGroups()`.
+   */
+  listJoinedGroups(): Promise<Array<{ jid: string; subject: string | null }>>
 
   on<K extends keyof WhatsAppProviderEvents>(event: K, listener: EventMap[K]): () => void
   onError(listener: (error: Error, context?: string) => void): () => void

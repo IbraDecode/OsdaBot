@@ -95,8 +95,22 @@ class FakeWhatsAppProvider implements WhatsAppProvider {
   async getGroupParticipants() {
     return []
   }
+  /** Grup yang "diikuti" bot tiruan. */
+  joinedGroups: Array<{ jid: string; subject: string | null }> = []
+
+  async listJoinedGroups() {
+    return this.joinedGroups
+  }
+
   async getAllGroups() {
-    return []
+    return this.joinedGroups.map((g) => ({
+      jid: g.jid,
+      subject: g.subject,
+      description: null,
+      ownerJid: null,
+      participantCount: null,
+      participants: [],
+    }))
   }
 
   on<K extends keyof WhatsAppProviderEvents>(event: K, listener: WhatsAppProviderEvents[K]): () => void {

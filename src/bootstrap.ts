@@ -11,6 +11,7 @@ import { ApprovalEngine } from './approvals/engine.js'
 import { ToolApprovalExecutor } from './approvals/executor.js'
 import { AttendanceService } from './attendance/service.js'
 import { FinanceService } from './finance/service.js'
+import { GroupLinkService } from './groups/service.js'
 import { AgentRuntime } from './agent/runtime.js'
 import { OpenAiCompatibleProvider } from './agent/llm/openai-compatible.js'
 import { env } from './config/env.js'
@@ -39,6 +40,7 @@ export interface Application {
   identity: IdentityEngine
   attendance: AttendanceService
   finance: FinanceService
+  groups: GroupLinkService
   tools: ToolRegistry
   skills: SkillRegistry
   agent: AgentRuntime
@@ -111,7 +113,19 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<Applica
   tools.setApprovalBroker(approvals)
 
   // --- Lapis pipeline -----------------------------------------------------
-  const pipeline = new MessagePipeline({ prisma })
+  const groups = new GroupLinkService(prisma)
+  const pipeline = new MessagePipeline({
+    prisma,
+    // Pesan dari grup yang belum tertaut dicatat, bukan dibuang diam-diam.
+    // Tanpa ini operator tidak akan pernah tahu JID mana yang perlu
+    // ditautkan, dan bot terlihat "rusak" tanpa penjelasan apa pun.
+    onUnlinkedGroup: async (message) => {
+      await groups.catatGrupBelumTertaut(message.chatJid, {
+        senderName: message.senderPushName,
+      })
+      log.warn({ chatJid: message.chatJid }, 'grup belum tertaut — jalankan pnpm osda group:link')
+    },
+  })
 
   // --- Lapis pengingat -----------------------------------------------------
   //
@@ -185,6 +199,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<Applica
     identity,
     attendance,
     finance,
+    groups,
     tools,
     skills,
     agent,

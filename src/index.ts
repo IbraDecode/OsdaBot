@@ -49,6 +49,60 @@ async function main(): Promise<void> {
     log.info({ code }, 'kode pairing dibuat')
   })
 
+  // Grup yang ditemukan dilaporkan supaya operator bisa menautkannya tanpa
+  // harus menunggu ada pesan. Bot yang baru ditambahkan ke grup tidak akan
+  // mengirim event apa pun sampai ada yang bicara.
+  app.whatsapp.on('groupDiscovered', ({ jid, subject }) => {
+    log.info({ jid, subject }, 'grup terdeteksi — jalankan pnpm osda group:link untuk menautkannya')
+
+    // Subjek ikut disimpan. `groupFetchAllParticipating` sering mengembalikan
+    // metadata tanpa `subject`, jadi event `groups.update` adalah sumber
+    // subjek yang lebih lengkap — tanpa ini, grup yang tertaut tampil
+    // "(tanpa subjek)" padahal namanya jelas ada.
+    void app.groups
+      .sinkronSubjek([{ jid, subject }])
+      .then(() => app.groups.catatGrupBelumTertaut(jid, { subject }))
+      .catch((error: unknown) => log.warn({ err: error, jid }, 'gagal menyimpan data grup yang terdeteksi'))
+  })
+
+  // Pindai grup saat soket benar-benar terhubung, bukan tepat setelah
+  // `connect()` selesai.
+  //
+  // `connect()` resolve sebelum socket open. Memindai di sana gagal dengan
+  // "Connection Closed" — dan karena kegagalannya ditelan diam-diam, bot
+  // terlihat tidak pernah menemukan grup padahal sudah=df biasanya ada.
+  let sudahPindai = false
+  app.whatsapp.on('connection', (status) => {
+    if (status.state !== 'connected' || sudahPindai) return
+    sudahPindai = true
+
+    void (async () => {
+      try {
+        const grup = await app.whatsapp.listJoinedGroups()
+        const perluTaut: string[] = []
+        for (const g of grup) {
+          if (await app.groups.catatGrupBelumTertaut(g.jid, { subject: g.subject })) {
+            perluTaut.push(`${g.subject ?? '(tanpa subjek)'} (${g.jid})`)
+          }
+        }
+        await app.groups.sinkronSubjek(grup)
+        log.info({ totalGrup: grup.length, perluTaut: perluTaut.length }, 'daftar grup diperiksa')
+
+        if (perluTaut.length > 0) {
+          log.warn(
+            { grup: perluTaut },
+            'ada grup yang belum tertaut — bot TIDAK akan merespons di sana sampai ditautkan',
+          )
+          log.warn('Tautkan dengan: pnpm osda group:link --jid=<JID> --org=<NAMA>')
+        } else if (grup.length > 0) {
+          log.info({ totalGrup: grup.length }, 'semua grup sudah tertaut')
+        }
+      } catch (error) {
+        log.error({ err: error }, 'gagal memindai daftar grup')
+      }
+    })()
+  })
+
   app.whatsapp.onError((error, context) => {
     log.error({ err: error, context }, 'kesalahan provider WhatsApp')
   })

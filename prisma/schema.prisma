@@ -365,6 +365,27 @@ model Group {
   @@index([organizationId])
 }
 
+/// Grup yang mengirim pesan tapi BELUM tertaut ke organisasi mana pun.
+///
+/// Tanpa tabel ini, pesan dari grup yang belum tertaut hilang tanpa jejak dan
+/// operator tidak akan pernah tahu JID mana yang perlu ditautkan. Bot yang
+/// membuang pesan grup diam-diam terlihat "rusak" tanpa penjelasan apa pun.
+model SeenGroup {
+  id        String   @id @default(uuid()) @db.Uuid
+  /// JID grup: "123456789-123456@g.us". Unik.
+  jid       String   @unique
+  /// Subjek grup saat pesan terakhir masuk (bisa berubah kapan saja).
+  subject   String?
+  /// Berapa kali pesan dari grup ini pernah sampai ke bot.
+  messageCount Int    @default(1)
+  lastSenderName String?
+  lastSeenAt DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  @@index([lastSeenAt(sort: Desc)])
+  @@map("seen_groups")
+}
+
 model GroupMembership {
   id        String   @id @default(uuid()) @db.Uuid
   groupId   String   @db.Uuid

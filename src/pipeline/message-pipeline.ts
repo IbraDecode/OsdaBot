@@ -66,6 +66,13 @@ export interface PipelineDeps {
   prisma?: typeof prisma
   botName?: string
   messageRateLimit?: number
+  /**
+   * Dicatat setiap kali pesan grup ditolak karena grupnya belum tertaut.
+   *
+   * Tanpa ini, operator tidak akan pernah tahu JID grup mana yang perlu
+   * ditautkan — bot terlihat "rusak" tanpa penjelasan apa pun.
+   */
+  onUnlinkedGroup?: (message: NormalizedMessage) => Promise<void>
 }
 
 /** Kata pemicu yang mengaktifkan bot di grup. */
@@ -79,11 +86,13 @@ export class MessagePipeline {
   private readonly botName: string
   private readonly limiter: SlidingWindowLimiter
   private readonly seen = new Map<string, number>()
+  private readonly onUnlinkedGroup: ((message: NormalizedMessage) => Promise<void>) | null
 
   constructor(deps: PipelineDeps = {}) {
     this.prisma = deps.prisma ?? prisma
     this.botName = deps.botName ?? env.WHATSAPP_BOT_NAME
     this.limiter = new SlidingWindowLimiter(deps.messageRateLimit ?? env.RATE_LIMIT_MESSAGES_PER_MINUTE)
+    this.onUnlinkedGroup = deps.onUnlinkedGroup ?? null
   }
 
   /**
@@ -173,7 +182,16 @@ export class MessagePipeline {
       : null
 
     // Grup belum tertaut ke organisasi: tidak ada konteks, jangan diproses.
-    if (!group) return { action: 'skip', reason: 'group_not_linked' }
+    //
+    // Dicatat supaya operator bisa menautkannya. Melewati tanpa jejak membuat
+    // bot terlihat rusak tanpa penjelasan apa pun.
+    if (!group) {
+      if (this.onUnlinkedGroup) {
+        // Kegagalan mencatat tidak boleh menggagalkan pemrosesan pesan.
+        await this.onUnlinkedGroup(message).catch(() => undefined)
+      }
+      return { action: 'skip', reason: 'group_not_linked' }
+    }
     if (group.isArchived) return { action: 'skip', reason: 'group_archived' }
 
     const policy: GroupActivationPolicy = group.activation

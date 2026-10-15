@@ -242,6 +242,7 @@ export class BaileysProvider implements WhatsAppProvider {
     connection: new Set(),
     pairingCode: new Set(),
     qr: new Set(),
+    groupDiscovered: new Set(),
   }
   private errorListeners = new Set<(error: Error, context?: string) => void>()
 
@@ -334,11 +335,18 @@ export class BaileysProvider implements WhatsAppProvider {
     sock.ev.on('groups.update', (updates) => {
       for (const group of updates) {
         if (!group.id) continue
-        void (async () => {
-          const cached = await groupMetadataCache.get<GroupMetadata>(group.id!)
-          groupMetadataCache.set<GroupMetadata>(group.id!, { ...(cached ?? {}), ...group } as GroupMetadata)
-        })()
+        const subject = typeof group.subject === 'string' ? group.subject : null
+        // Grup yang baru didaftarkan ikut dilaporkan, supaya operator
+        // tidak perlu menunggu ada pesan untuk bisa menautkannya.
+        if (subject) this.emitDiscoveredGroup(group.id, subject)
       }
+      void (async () => {
+        for (const group of updates) {
+          if (!group.id) continue
+          const cached = await groupMetadataCache.get<GroupMetadata>(group.id)
+          groupMetadataCache.set<GroupMetadata>(group.id, { ...(cached ?? {}), ...group } as GroupMetadata)
+        }
+      })()
     })
     sock.ev.on('group-participants.update', ({ id }) => {
       groupMetadataCache.del(id)
@@ -632,6 +640,30 @@ export class BaileysProvider implements WhatsAppProvider {
   // ===========================================================================
   // Grup
   // ===========================================================================
+
+  /**
+   * Daftar grup yang diikuti akun ini, diringkas jadi JID + subjek.
+   *
+   * Diturunkan dari `getAllGroups()` supaya tidak ada dua jalur baca grup
+   * yang bisa menghasilkan jawaban berbeda.
+   */
+  async listJoinedGroups(): Promise<Array<{ jid: string; subject: string | null }>> {
+    const semua = await this.getAllGroups()
+    return semua
+      .filter((group) => group.jid.endsWith('@g.us'))
+      .map((group) => ({ jid: group.jid, subject: group.subject }))
+  }
+
+  /** Teruskan grup yang ditemukan ke listener. */
+  private emitDiscoveredGroup(jid: string, subject: string | null): void {
+    for (const listener of this.listeners.groupDiscovered) {
+      try {
+        listener({ jid, subject })
+      } catch (error) {
+        this.emitError(error instanceof Error ? error : new Error(String(error)), 'memberi tahu grup ditemukan')
+      }
+    }
+  }
 
   async getGroupMetadata(groupJid: string): Promise<NormalizedGroupMetadata | null> {
     const sock = this.sock
