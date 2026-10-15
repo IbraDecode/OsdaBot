@@ -110,14 +110,47 @@ export class ToolRegistry {
   /**
    * Skema tool yang dikirim ke model AI.
    *
-   * Hanya menyertakan tool yang relevan: terdaftar DAN seluruh permission-nya
-   * dimiliki aktor. Ini menghemat token sekaligus mencegah model "mengingat"
-   * kemampuan yang tidak boleh ia pakai.
+   * Hanya menyertakan tool yang relevan: terdaftar, permission-nya dimiliki
+   * aktor, dan — kalau `options.only` diberikan — cocok dengan skill yang
+   * dipilih untuk pesan tersebut.
+   *
+   * Penyaringan yang terakhir itu bukan sekadar penghematan token. Diperiksa
+   * ke gateway sungguhan, waktu respons naik tajam dengan jumlah tool:
+   *
+   *     0 tool   ->   4 detik
+   *     3 tool   ->  34 detik
+   *    18 tool   -> lebih dari 60 detik (timeout)
+   *
+   * Tanpa penyaringan, pesan paling sederhana pun tidak bisa dijawab.
+   *
+   * Tool yang tidak dikirim tidak kehilangan kemampuannya — hanya tidak bisa
+   * dipilih model untuk pesan itu. `defaultToolNames` tetap dikirim apa pun,
+   * supaya bot tidak kehilangan kemampuan dasar saat tidak ada skill yang
+   * cocok.
    */
-  async schemasFor(context: ToolExecutionContext): Promise<Array<{ type: 'function'; function: ToolSchemaForModel }>> {
+  async schemasFor(
+    context: ToolExecutionContext,
+    options: { only?: string[]; defaultToolNames?: string[] } = {},
+  ): Promise<Array<{ type: 'function'; function: ToolSchemaForModel }>> {
     const schemas: Array<{ type: 'function'; function: ToolSchemaForModel }> = []
 
+    // `only` yang TIDAK diberikan berarti "kirim semua" — pemanggil memang
+    // meminta semuanya.
+    //
+    // `only: []` berarti "tidak ada yang relevan" dan itu BUKAN berarti kirim
+    // semua. Versi sebelumnya salah: array kosong membuat filter diabaikan,
+    // sehingga pesan yang tidak cocok dengan skill mana pun justru mengirim
+    // 18 tool lalu timeout. Arahnya justru terbalik — justru pesan paling
+    // sederhana yang paling butuh sedikit tool.
+    const filterAktif = options.only !== undefined
+    const wanted = filterAktif ? new Set(options.only ?? []) : null
+    const fallback = options.defaultToolNames ? new Set(options.defaultToolNames) : null
+
     for (const tool of this.tools.values()) {
+      if (wanted && !wanted.has(tool.name) && !(fallback?.has(tool.name) ?? false)) {
+        continue
+      }
+
       const allowed = await this.hasAllPermissions(tool.requiredPermissions, context)
       if (!allowed) continue
 

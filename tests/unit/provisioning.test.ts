@@ -82,6 +82,7 @@ function buatPrismaPalsu() {
     roleBindings: [] as Array<Record<string, unknown>>,
     links: [] as Array<Record<string, unknown>>,
     identities: [] as Array<Record<string, unknown>>,
+    users: [] as Array<Record<string, unknown>>,
   }
 
   const prisma = {
@@ -135,20 +136,38 @@ function buatPrismaPalsu() {
     whatsAppIdentity: {
       findUnique: async ({ where }: { where: { pnJid: string } }) => {
         const identity = state.identities.find((i) => i.pnJid === where.pnJid)
-        return identity ? { id: identity.id as string, userId: identity.userId ?? null } : null
+        return identity
+          ? {
+              id: identity.id as string,
+              userId: identity.userId ?? null,
+              phoneNumber: identity.phoneNumber ?? null,
+              pushName: identity.pushName ?? null,
+            }
+          : null
       },
-      update: async ({ data }: { data: Record<string, unknown> }) => {
+      update: async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
         panggil.push('identity.update')
+        const identity = state.identities.find((i) => i.id === where.id)
+        if (identity) Object.assign(identity, data)
         return {}
       },
     },
 
     user: {
-      create: async ({ data }: { data: Record<string, unknown> & { identities: { create: Record<string, unknown> } } }) => {
+      // Dua bentuk pemanggilan:
+      //  - tanpa `identities` (identitas sudah ada, cuma perlu disambungkan)
+      //  - dengan `identities.create` (identitas baru dibuat ikut User)
+      create: async ({ data }: { data: any }) => {
         panggil.push('user.create')
-        const id = `user-${state.identities.length + 1}`
-        state.identities.push({ id: `ident-${id}`, userId: id, ...data.identities.create })
-        return { id, identities: [{ id: `ident-${id}` }] }
+        state.users.push({ id: `user-${state.users.length + 1}` })
+        const id = `user-${state.users.length}`
+
+        if (data.identities?.create) {
+          state.identities.push({ id: `ident-${id}`, userId: id, ...data.identities.create })
+          return { id, identities: [{ id: `ident-${id}` }] }
+        }
+
+        return { id, identities: [] }
       },
     },
 
@@ -298,6 +317,40 @@ describe('OrganizationProvisioner.linkAdmin', () => {
     expect(state.links[0]).not.toHaveProperty('verifiedAt')
     expect(state.links[0]!.verifiedAt ?? null).toBeNull()
     expect((state.identities[0]!.verifiedAt as Date | undefined) ?? null).toBeNull()
+  })
+
+  it('MENYAMBUNGKAN identitas yang sudah ada tapi belum punya user', async () => {
+    // Bug nyata yang hanya muncul dengan data sungguhan.
+    //
+    // Identitas bisa dibuat duluan (mis. percakapan sebelumnya) tanpa User.
+    // Versi lama mencoba `user.create` dengan `pnJid` yang sama dan bentrok
+    // unique — provisioning gagal total dan organisasi tidak bisa dibuat.
+    const { prisma, state, panggil } = buatPrismaPalsu()
+
+    // Kondisi nyata di database: identitas ada, userId kosong.
+    state.identities.push({
+      id: 'ident-yang-ada',
+      userId: null,
+      pnJid: '6285792820173@s.whatsapp.net',
+      phoneNumber: '6285792820173',
+      pushName: 'Pemilik OsdaBot',
+    })
+
+    const provisioner = new OrganizationProvisioner(prisma as never)
+    const org = await provisioner.createOrganization({ name: 'OSIS Uji' })
+
+    const hasil = await provisioner.linkAdmin({
+      organizationId: org.id,
+      fullName: 'Pemilik',
+      phone: '6285792820173',
+    })
+
+    expect(hasil.created).toBe(true)
+    // Identitas yang SAMA disambungkan, bukan diduplikasi.
+    expect(hasil.identityId).toBe('ident-yang-ada')
+    expect(state.identities).toHaveLength(1)
+    expect(state.identities[0]!.userId).toBe(hasil.userId)
+    expect(panggil.filter((p) => p === 'identity.update').length).toBeGreaterThan(0)
   })
 
   it('IDEMPOTEN: nomor sama tidak membuat anggota atau peran ganda', async () => {

@@ -222,7 +222,7 @@ export class OrganizationProvisioner {
     // 1. User + identitas WhatsApp.
     const existingIdentity = await this.prisma.whatsAppIdentity.findUnique({
       where: { pnJid },
-      select: { id: true, userId: true },
+      select: { id: true, userId: true, phoneNumber: true, pushName: true },
     })
 
     let identityId: string
@@ -232,6 +232,32 @@ export class OrganizationProvisioner {
     if (existingIdentity?.userId) {
       identityId = existingIdentity.id
       userId = existingIdentity.userId
+    } else if (existingIdentity) {
+      // Identitas sudah ada tapi belum punya User.
+      //
+      // Ini kondisi nyata: identitas bisa dibuat duluan (mis. oleh percakapan
+      // sebelumnya) lalu User-nya belum pernah dibuat. Versi lama mencoba
+      // `user.create` dengan `pnJid` yang sama dan bentrok unique.
+      //
+      // Yang benar: buat User-nya, lalu SAMBUNGKAN ke identitas yang sudah
+      // ada. Identitas WhatsApp tidak boleh diduplikasi — nomor itu satu.
+      const user = await this.prisma.user.create({
+        data: { displayName: input.fullName },
+        select: { id: true },
+      })
+
+      await this.prisma.whatsAppIdentity.update({
+        where: { id: existingIdentity.id },
+        data: {
+          userId: user.id,
+          phoneNumber: existingIdentity.phoneNumber ?? digits,
+          pushName: existingIdentity.pushName ?? input.fullName,
+        },
+      })
+
+      identityId = existingIdentity.id
+      userId = user.id
+      created = true
     } else {
       const user = await this.prisma.user.create({
         data: {

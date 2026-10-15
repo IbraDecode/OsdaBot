@@ -946,6 +946,11 @@ function extractMediaMeta(
   body: Record<string, unknown> | undefined,
 ): { type: NormalizedMessage['type']; fileName: string | null; mimetype: string | null } {
   const map: Record<string, NormalizedMessage['type']> = {
+    // `getContentType` Baileys mengembalikan 'conversation' untuk pesan teks
+    // biasa. Tanpa entri ini, SETIAP pesan teks menjadi `unknown` — dan
+    // setiap query `type: 'text'` selalu kosong.
+    conversation: 'text',
+    extendedTextMessage: 'text',
     imageMessage: 'image',
     videoMessage: 'video',
     audioMessage: 'audio',

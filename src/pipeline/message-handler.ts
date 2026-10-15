@@ -163,6 +163,15 @@ export class MessageHandler {
       allowedPermissions,
     })
 
+    // Tool yang dikirim ke model dibatasi pada tool milik skill yang cocok.
+    //
+    // Ini bukan penghematan token saja. Diperiksa ke gateway sungguhan,
+    // waktu respons naik dari 4 detik (0 tool) ke >60 detik (18 tool) —
+    // artinya tanpa penyaringan, pesan paling sederhana pun timeout.
+    const relevantToolNames = [
+      ...new Set(relevantSkills.flatMap((skill) => skill.metadata.requiredTools)),
+    ]
+
     const response = await this.deps.agent.run({
       correlationId,
       actorUserId: resolved.identity.userId,
@@ -181,6 +190,9 @@ export class MessageHandler {
         description: cap.description,
       })),
       extraSystemContext: this.deps.skills.render(relevantSkills) || undefined,
+      // Selalu dikirim, termasuk saat kosong: array kosong berarti "tidak ada
+      // skill yang cocok" dan agent akan memakai tool default saja.
+      relevantToolNames,
     })
 
     if (response.status === 'failed') {

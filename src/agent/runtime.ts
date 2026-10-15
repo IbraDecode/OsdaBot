@@ -28,6 +28,21 @@ import type { ToolExecutionContext, ToolResult } from '../tools/types.js'
 
 const log = logger.child({ module: 'agent' })
 
+/**
+ * Tool yang selalu dikirim, apa pun pesan yang masuk.
+ *
+ * Dipilih karena tool kecil yang dibutuhkan hampir
+ * setiap percakapan: melihat anggota, melihat jadwal, membatalkan pengingat.
+ *
+ * Tanpa ini, pesan yang tidak cocok dengan skill apa pun akan membuat model
+ * kehilangan kemampuan dasar.
+ */
+const DEFAULT_TOOLS = [
+  'organization.list_members',
+  'attendance.list_events',
+  'reminder.list',
+]
+
 /** Permintaan masuk ke agent. */
 export interface AgentRequest {
   correlationId: string
@@ -50,6 +65,14 @@ export interface AgentRequest {
   capabilities: Array<{ name: string; description: string }>
   /** Tool tambahan di luar registry (mis. hasil context). */
   extraSystemContext?: string
+  /**
+   * Tool yang relevan untuk pesan ini, hasil dari pemilihan skill.
+   *
+   * Dikirim dari handler yang sudah menghitung skill mana yang cocok.
+   * Mengosongkan berarti "kirim semua" — dipakai kalau memang tidak ada
+   * informasi yang cukup untuk menyaring.
+   */
+  relevantToolNames?: string[]
 }
 
 /** Hasil agent. */
@@ -112,7 +135,15 @@ export class AgentRuntime {
       authorization: this.deps.authorization,
     }
 
-    const rawSchemas = await this.deps.tools.schemasFor(context)
+    // Hanya tool dari skill yang relevan yang dikirim.
+    //
+    // Diperiksa terhadap gateway sungguhan: 0 tool -> 4 detik, 3 tool ->
+    // 34 detik, 18 tool -> lebih dari 60 detik (timeout). Tanpa penyaringan,
+    // pesan paling sederhana pun tidak bisa dijawab.
+    const rawSchemas = await this.deps.tools.schemasFor(context, {
+      ...(request.relevantToolNames ? { only: request.relevantToolNames } : {}),
+      defaultToolNames: DEFAULT_TOOLS,
+    })
     const availableToolNames = rawSchemas.map((schema) => schema.function.name)
     const toolSchemas: ToolDefinitionForModel[] = rawSchemas.map((schema) => schema.function)
 
