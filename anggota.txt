@@ -1,0 +1,6 @@
+# Anggota uji untuk verifikasi tool attendance
+Budi Santoso | 628120000001 | anggota | X AKL 1 | budi
+Siti Aminah  | 628120000002 | anggota | X AKL 1 | siti
+Andi Pratama | 628120000003 | anggota | X AKL 2 | andi
+Dewi Lestari | 628120000004 | anggota | X AKL 2 | dewi
+Rizky Ramadhan| 628120000005 | anggota | XI IPA 1 | rizky

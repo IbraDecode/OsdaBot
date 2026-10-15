@@ -114,9 +114,17 @@ export function buildAttendanceTools(deps: AttendanceToolsDeps): Array<ToolDefin
   > = {
     name: 'attendance.create',
     description:
-      'Buat daftar hadir untuk satu kegiatan. Pakai tanggal YYYY-MM-DD. Kalau kegiatan untuk tanggal itu sudah ada, jangan buat ulang — gunakan attendance.get. Kalau pengguna memberikan daftar teks (markdown), teruskan lewat markdown supaya formatnya dipertahankan.',
+      'Buat daftar hadir untuk satu kegiatan. JUDUL WAJIB diambil dari nama kegiatan yang disebut pengguna — jangan pernah mengarang atau mengosongkan, karena parameter ini wajib dan tanpa itu tool gagal. ' +
+      'Pakai tanggal YYYY-MM-DD. Kalau kegiatan untuk tanggal itu sudah ada, jangan buat ulang — gunakan attendance.get. ' +
+      'Kalau pengguna memberikan daftar teks (markdown), teruskan lewat markdown supaya formatnya dipertahankan.',
     inputSchema: z.object({
-      title: z.string().min(1).max(200).describe('Judul daftar, mis. "Daftar Hadir LKBB Kamis".'),
+      title: z
+        .string()
+        .min(1)
+        .max(200)
+        .describe(
+          'WAJIB. Nama kegiatan dari kalimat pengguna. Contoh: pengguna bilang "buat daftar hadir latihan LKBB besok" -> title = "Latihan LKBB". Kalau pengguna tidak menyebut nama kegiatan, gunakan kalimat singkat yang paling menggambarkan, jangan kosongkan.',
+        ),
       eventDate: z
         .string()
         .regex(/^\d{4}-\d{2}-\d{2}$/, 'Format tanggal harus YYYY-MM-DD')

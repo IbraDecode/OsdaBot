@@ -61,7 +61,7 @@ src/
 skills/             Kemampuan berbasis Markdown
 docs/               Dokumentasi berbahasa Indonesia
 tests/
-├── unit/           Fungsi murni (309 test)
+├── unit/           Fungsi murni (323 test)
 ├── integration/    Modul nyata + PostgreSQL (35 test)
 └── live/           Provider sungguhan (10 test)
 ```

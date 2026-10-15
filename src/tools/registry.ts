@@ -21,6 +21,7 @@ import { describeDenial } from '../security/authorization.js'
 import { PERMISSIONS, type Permission } from '../security/permissions.js'
 import {
   fail,
+  ToolError,
   type ToolErrorCode,
   type ToolDefinition,
   type ToolExecutionContext,
@@ -409,7 +410,27 @@ function truncate(value: string, max = 160): string {
 type MappedToolFailure = ToolResult<never> & { code: ToolErrorCode }
 
 /** Ubah error tak terduga jadi ToolResult yang aman. */
+/** Diekspor khusus untuk test. */
+export const mapToolErrorForTest = mapToolError
+
 function mapToolError(error: unknown): MappedToolFailure {
+  // `ToolError` harus diperiksa PERTAMA.
+  //
+  // Tool melempar `ToolError` dengan kode yang sudah bermakna
+  // (NOT_FOUND, VALIDATION_FAILED, PERMISSION_DENIED, …). Versi sebelum ini
+  // hanya mengenali kode domain kustom seperti ATTENDANCE_NOT_FOUND, sehingga
+  // SETIAP ToolError jatuh ke INTERNAL_ERROR — pesan sebenarnya hilang, dan
+  // model diberi jawaban generik yang tidak bisadinstrumentasikan.
+  //
+  // Ditemukan lewat pengujian live: `attendance.get` tanpa daftar aktif
+  // melempar NOT_FOUND, tapi tercatat sebagai INTERNAL_ERROR.
+  if (error instanceof ToolError) {
+    return {
+      ...fail(error.code, error.message, { retryable: error.retryable, details: error.details }),
+      code: error.code,
+    }
+  }
+
   if (error instanceof Error) {
     // Pesan error domain yang sudah aman untuk ditampilkan ke pengguna.
     const known = [
@@ -455,8 +476,23 @@ function mapToolError(error: unknown): MappedToolFailure {
  * karena versinya bisa berubah. Hanya kasus yang memang kita pakai yang ditangani.
  */
 export function zodToJsonSchema(schema: ZodType<unknown>): Record<string, unknown> {
-  const described = describeZod(schema, 0)
-  return described
+  return describeZod(schema, 0)
+}
+
+/**
+ * Bungkus hasil dengan `.describe()` bila ada.
+ *
+ * PENTING: tanpa ini, setiap `.describe()` pada parameter tool HILANG dan
+ * model tidak pernah menerima petunjuk cara mengisinya.
+ *
+ * Ditemukan lewat pengujian live: `attendance.create` selalu gagal dengan
+ * `title: Required`, padahal deskripsinya sudah berisi instruksi eksplisit
+ * ("WAJIB. Nama kegiatan dari kalimat pengguna."). Instruksi itu tidak pernah
+ * sampai ke model karena `def.description` tidak pernah dibaca.
+ */
+function withDescription(schema: ZodType<unknown>, described: Record<string, unknown>): Record<string, unknown> {
+  const description = (schema as unknown as { description?: string }).description
+  return description ? { ...described, description } : described
 }
 
 const MAX_DEPTH = 6
@@ -466,6 +502,11 @@ function describeZod(schema: ZodType<unknown>, depth: number): Record<string, un
 
   const def = (schema as unknown as { _def: Record<string, unknown> })._def ?? {}
   const typeName = def.typeName as string | undefined
+
+  // Pembungkus deskripsi dipasang di setiap cabang supaya `.describe()`
+  // selalu ikut, apa pun tipenya.
+  const selesai = (result: Record<string, unknown>): Record<string, unknown> =>
+    withDescription(schema, result)
 
   switch (typeName) {
     case 'ZodString': {
@@ -477,7 +518,7 @@ function describeZod(schema: ZodType<unknown>, depth: number): Record<string, un
         if (check.kind === 'email') result.format = 'email'
         if (check.kind === 'uuid') result.format = 'uuid'
       }
-      return result
+      return selesai(result)
     }
 
     case 'ZodNumber': {
@@ -490,49 +531,49 @@ function describeZod(schema: ZodType<unknown>, depth: number): Record<string, un
           if (check.kind === 'max') result.maximum = check.value
         }
       }
-      return result
+      return selesai(result)
     }
 
     case 'ZodBoolean':
-      return { type: 'boolean' }
+      return selesai({ type: 'boolean' })
 
     case 'ZodEnum':
-      return { type: 'string', enum: (def.values as string[] | undefined)?.slice() ?? [] }
+      return selesai({ type: 'string', enum: (def.values as string[] | undefined)?.slice() ?? [] })
 
     case 'ZodLiteral':
-      return { type: 'string', enum: [def.value as string] }
+      return selesai({ type: 'string', enum: [def.value as string] })
 
     case 'ZodArray': {
       const min = (def.minLength as { value?: number } | null)?.value
-      return {
+      return selesai({
         type: 'array',
         items: describeZod(def.type as ZodType<unknown>, depth + 1),
         ...(typeof min === 'number' ? { minItems: min } : {}),
-      }
+      })
     }
 
     case 'ZodOptional':
     case 'ZodNullable':
     case 'ZodDefault': {
       const inner = (def.innerType ?? def.type) as ZodType<unknown> | undefined
-      if (!inner) return { type: 'string' }
+      if (!inner) return selesai({ type: 'string' })
       const described = describeZod(inner, depth + 1)
       if (typeName === 'ZodDefault' && def.defaultValue !== undefined) {
         const fn = def.defaultValue as () => unknown
-        return { ...described, default: fn() }
+        return selesai({ ...described, default: fn() })
       }
-      return described
+      return selesai(described)
     }
 
     case 'ZodUnion':
     case 'ZodDiscriminatedUnion': {
       const options = (def.options as ZodType<unknown>[] | undefined) ?? []
       const variants = options.map((option) => describeZod(option, depth + 1))
-      return { anyOf: variants }
+      return selesai({ anyOf: variants })
     }
 
     case 'ZodRecord':
-      return { type: 'object', additionalProperties: true }
+      return selesai({ type: 'object', additionalProperties: true })
 
     case 'ZodObject': {
       const shapeFn = def.shape as (() => Record<string, ZodType<unknown>>) | undefined
@@ -548,11 +589,11 @@ function describeZod(schema: ZodType<unknown>, depth: number): Record<string, un
       const result: Record<string, unknown> = { type: 'object', properties }
       if (required.length > 0) result.required = required
       result.additionalProperties = false
-      return result
+      return selesai(result)
     }
 
     default:
-      return { type: 'string' }
+      return selesai({ type: 'string' })
   }
 }
 

@@ -18,6 +18,7 @@
 import { randomUUID } from 'node:crypto'
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 import { env } from '../config/env.js'
+import { canonicalJson } from '../approvals/intent.js'
 import { logger } from '../observability/logger.js'
 import type { LlmProvider, ToolCall, ToolDefinitionForModel } from './llm/provider.js'
 import { LlmError } from './llm/provider.js'
@@ -37,6 +38,22 @@ const log = logger.child({ module: 'agent' })
  * Tanpa ini, pesan yang tidak cocok dengan skill apa pun akan membuat model
  * kehilangan kemampuan dasar.
  */
+/**
+ * Sidik jari unik dari satu panggilan tool.
+ *
+ * Menyertakan nama + argumen. Panggilan berbeda dengan argumen berbeda tetap
+ * diizinkan — misalnya mencoba lagi dengan tanggal yang dikoreksi.
+ */
+export function failedFingerprint(call: { name: string; arguments: Record<string, unknown> }): string {
+  let args: string
+  try {
+    args = canonicalJson(call.arguments ?? {})
+  } catch {
+    args = String(call.arguments)
+  }
+  return `${call.name}:${args}`
+}
+
 const DEFAULT_TOOLS = [
   'organization.list_members',
   'attendance.list_events',
@@ -176,6 +193,13 @@ export class AgentRuntime {
 
     let steps = 0
     let totalToolCalls = 0
+
+    /**
+     * Sidik jari tool yang sudah GAGAL dalam satu percakapan.
+     *
+     * Menghindre pengulangan yang pasti gagal dengan argumen identik.
+     */
+    const failedCalls = new Set<string>()
     let totalUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 }
 
     while (steps < this.maxSteps) {
@@ -253,7 +277,31 @@ export class AgentRuntime {
           continue
         }
 
+        // Panggilan identik yang sudah GAGAL tidak diulang.
+        //
+        // Tanpa ini, agent bisa memanggil tool yang sama dengan argumen yang
+        // sama berulang kali. Terlihat nyata di pengujian live:
+        // `title: Required` diulang 3 kali lalu agent kehabisan langkah tanpa
+        // pernah menjawab.
+        //
+        // Parameter yang sama akan menghasilkan hasil yang sama — mengulang
+        // hanya memboroskan waktu dan langkah.
+        const sidikJari = failedFingerprint(call)
+        if (failedCalls.has(sidikJari)) {
+          messages.push({
+            role: 'tool',
+            tool_call_id: call.id,
+            content: JSON.stringify({
+              error:
+                'Panggilan ini sudah dicoba dan gagal dengan argumen yang sama. ' +
+                'Ubah argumennya, atau jawab pengguna apa adanya apa yang bisa dan tidak bisa dilakukan.',
+            }),
+          })
+          continue
+        }
+
         const result = await this.executeTool(call, context)
+        if (!result.success) failedCalls.add(sidikJari)
         messages.push({ role: 'tool', tool_call_id: call.id, content: serializeResult(result) })
       }
     }
