@@ -52,7 +52,18 @@ const dummy = {
 }
 ```
 
-## Unit (450 test) + Integrasi (83 test) + Live (7 test)
+## Unit (456 test) + Integrasi (83 test) + Live (7 test)
+
+### `tests/unit/pdf-extract.test.ts` (6 test)
+
+Ekstraksi teks PDF:
+
+- Membaca teks dari PDF valid.
+- **Menolak berkas bukan PDF** — deteksi lewat magic bytes, bukan ekstensi
+  (nama berkas datang dari luar dan tidak bisa dipercaya).
+- **Menolak PDF rusak** dengan pesan yang bisa dibaca, bukan error parser mentah.
+- **PDF tanpa lapisan teks ditolak, bukan dikarang.**
+- Menolak dokumen melebihi batas halaman.
 
 ### `tests/unit/knowledge.test.ts` (23 test)
 

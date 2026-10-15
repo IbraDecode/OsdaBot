@@ -90,7 +90,7 @@ export class MessageHandler {
         identity: this.deps.identity,
       }) as never,
     )
-    this.deps.tools.registerAll(buildKnowledgeTools({ knowledge: this.deps.knowledge }) as never)
+    this.deps.tools.registerAll(buildKnowledgeTools({ knowledge: this.deps.knowledge, documents: this.deps.documents }) as never)
     this.deps.tools.registerAll(
       buildDocumentTools({
         documents: this.deps.documents,

@@ -5,6 +5,7 @@ version: 1.0.0
 required_tools:
   - knowledge_search
   - knowledge_ingest
+  - knowledge_ingest_document
   - knowledge_list
   - knowledge_archive
 required_permissions:
@@ -81,6 +82,14 @@ Contoh yang salah — mengarang:
 2. `knowledge_ingest` dengan isi **persis** seperti diberikan — jangan diringkas.
    Ringkasan yang keliru lebih berbahaya daripada dokumen lengkap.
 3. Kalau ada masa berlaku, isi `validUntil`.
+
+### Memasukkan PDF yang sudah dibuat
+
+Kalau dokumen PDF sudah dibuat (lewat `document_create`) dan isinya ingin bisa
+ditanyakan, pakai `knowledge_ingest_document` dengan `documentId`-nya.
+
+Kalau jawabannya "PDF tidak punya lapisan teks", berarti dokumennya hasil
+pindai/foto. **Jangan karang isinya.**katakan saja tidak bisa dibaca.
 
 ### Mengarsipkan
 

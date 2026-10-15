@@ -19,13 +19,17 @@ import { z } from 'zod'
 import { ToolError, type ToolDefinition, type ToolExecutionContext } from './types.js'
 import { PERMISSIONS } from '../security/permissions.js'
 import { KnowledgeError, type KnowledgeService } from '../knowledge/service.js'
+import { ExtractionError, extractPdfText } from '../knowledge/extract.js'
+import type { DocumentService } from '../documents/service.js'
 
 export interface KnowledgeToolsDeps {
   knowledge: KnowledgeService
+  /** Dipakai untuk membaca kembali PDF yang sudah dibuat. */
+  documents: DocumentService
 }
 
 export function buildKnowledgeTools(deps: KnowledgeToolsDeps): Array<ToolDefinition<never, never>> {
-  const { knowledge } = deps
+  const { knowledge, documents } = deps
 
   const search: ToolDefinition<{ query: string; documentType?: string; limit?: number }, unknown> = {
     name: 'knowledge_search',
@@ -140,6 +144,66 @@ export function buildKnowledgeTools(deps: KnowledgeToolsDeps): Array<ToolDefinit
     },
   }
 
+  const ingestDocument: ToolDefinition<{ documentId: string; documentType?: string }, unknown> = {
+    name: 'knowledge_ingest_document',
+    description:
+      'Masukkan PDF dokumen yang sudah dibuat (surat, sertifikat, daftar hadir) ke knowledge base supaya isinya bisa ditanyakan. ' +
+      'Hanya untuk dokumen berformat PDF yang sudah ada di daftar — bukan berkas dari luar. ' +
+      'Kalau PDF tidak punya lapisan teks (hasil pindai/foto), sistem akan bilang tidak bisa dibaca — jangan karang isinya.',
+    inputSchema: z
+      .object({
+        documentId: z.string().uuid().describe('Id dokumen dari document_create atau document_list.'),
+        documentType: z
+          .string()
+          .max(60)
+          .optional()
+          .describe('Klasifikasi dokumen di knowledge base, mis. "prosedur", "notulen".'),
+      })
+      .strict() as never,
+    requiredPermissions: [PERMISSIONS.KNOWLEDGE_WRITE],
+    riskLevel: 'MEDIUM',
+    requiresApproval: false,
+    async execute(input, context) {
+      const organizationId = requireOrg(context)
+
+      const isi = await documents.readBuffer(organizationId, input.documentId)
+      if (!isi) {
+        throw new ToolError('NOT_FOUND', 'Dokumen tidak ditemukan di organisasi ini.')
+      }
+
+      let teks: string
+      try {
+        const hasil = await extractPdfText(isi.buffer)
+        teks = hasil.text
+      } catch (error) {
+        // Pesan penolakan diteruskan apa adanya: "PDF ini hasil pindai" jauh
+        // lebih berguna daripada "gagal".
+        if (error instanceof ExtractionError) {
+          throw new ToolError('VALIDATION_FAILED', error.message)
+        }
+        throw error
+      }
+
+      const hasil = await knowledge.ingest({
+        organizationId,
+        title: isi.filename.replace(/\.pdf$/i, ''),
+        content: teks,
+        documentType: input.documentType ?? 'dokumen',
+        source: `dokumen:${input.documentId}`,
+        actorUserId: context.actorUserId,
+      })
+
+      return {
+        documentId: hasil.documentId,
+        sourceDocumentId: input.documentId,
+        title: hasil.title,
+        characterCount: hasil.characterCount,
+        chunkCount: hasil.chunkCount,
+        message: `Isi PDF "${hasil.title}" diekstraksi (${hasil.characterCount} karakter) dan disimpan ke knowledge base. Sekarang bisa ditanyakan.`,
+      }
+    },
+  }
+
   const list: ToolDefinition<{ limit?: number }, unknown> = {
     name: 'knowledge_list',
     description:
@@ -196,7 +260,7 @@ export function buildKnowledgeTools(deps: KnowledgeToolsDeps): Array<ToolDefinit
     },
   }
 
-  return [search, ingest, list, archive] as never
+  return [search, ingest, ingestDocument, list, archive] as never
 }
 
 function requireOrg(context: ToolExecutionContext): string {

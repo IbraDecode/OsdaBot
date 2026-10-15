@@ -153,7 +153,7 @@ penyebabnya.
 
 | Batas | Dampak |
 |---|---|
-| **Hanya teks, bukan PDF/DOCX.** | Dokumen yang dibuat mesin PDF **tidak** otomatis masuk ke knowledge base. Tidak ada ekstraksi teks. |
+| ~~Hanya teks, bukan PDF~~ | **Sudah ditutup.** PDF bisa diekstraksi dengan `knowledge_ingest_document`. Lihat `docs/EKSTRAKSI-PDF.md`. DOCX masih belum. |
 | **Stemming Indonesia terbatas.** | "hadir" vs "ketidakhadiran" butuh pencarian cadangan. Kata yang jauh berbeda bentuknya masih bisa gagal. |
 | **Tidak ada pencarian web.** | Semua dari dokumen internal. |
 | **Tidak berbagi antar organisasi. | Knowledge base tidak berbagi antar organisasi — benar, tapi berarti onboarding baru mulai dari nol. |
