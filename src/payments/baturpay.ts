@@ -31,12 +31,31 @@ import { logger } from '../observability/logger.js'
 
 const log = logger.child({ module: 'baturpay' })
 
-/** Status BaturPay → status internal OSDABOT. */
+/**
+ * Status BaturPay → status internal OSDABOT.
+ *
+ * ── Kenapa `capture` TIDAK dipetakan ke `SETTLED` ─────────────────────────
+ *
+ * Dokumentasi BaturPay:
+ *
+ * > `capture` — Berhasil tapi belum final (mid transit — akan jadi `settlement`)
+ *
+ * Memetakan `capture` ke `SETTLED` berarti `verifiedAt` terisi pada uang yang
+ * **belum final**. Kalau ternyata jadi sengketa, kita sudah mencatat uang masuk
+ * yang tidak pernah masuk.
+ *
+ * Melebihi-native (menunggu `settlement`) lebih aman daripada lebih-native:
+ * kurang mencatat bisa diperbaiki manual, lebih mencatat berarti buku kas
+ * salah dan kas fisik tidak cocok dengannya.
+ *
+ * `capture` dipetakan ke `PENDING` — statusnya sudah berubah, tapi uangnya
+ * belum dinyatakan masuk.
+ */
 export const STATUS_MAP: Record<string, PaymentStatus> = {
   created: 'PENDING',
   pending: 'PENDING',
   settlement: 'SETTLED',
-  capture: 'SETTLED',
+  capture: 'PENDING',
   expire: 'EXPIRED',
   cancel: 'CANCELLED',
   deny: 'FAILED',
@@ -44,6 +63,22 @@ export const STATUS_MAP: Record<string, PaymentStatus> = {
   partial_refund: 'REFUNDED',
   chargeback: 'FAILED',
 }
+
+/**
+ * Status yang berarti "uang sudah benar-benar diterima".
+ *
+ * Hanya `settlement`. `capture` sengaja tidak termasuk — lihat STATUS_MAP.
+ */
+const STATUS_MASUK: ReadonlySet<PaymentStatus> = new Set<PaymentStatus>(['SETTLED'])
+
+/**
+ * Status yang menandakan uang KEMBALI.
+ *
+ * Penting: status ini harus diterima bahkan setelah pembayaran tercatat
+ * `SETTLED`. Uang yang dikembalikan adalah peristiwa uang yang nyata, dan
+ * mengabaikannya membuat buku kas menunjukkan uang yang sudah tidak ada.
+ */
+const STATUS_ANGKUT: ReadonlySet<PaymentStatus> = new Set<PaymentStatus>(['REFUNDED', 'FAILED'])
 
 /** Status yang terminal — setelah ini tidak berubah lagi. */
 const TERMINAL_STATUSES = new Set<PaymentStatus>(['SETTLED', 'FAILED', 'EXPIRED', 'CANCELLED', 'REFUNDED'])
@@ -71,7 +106,8 @@ export interface CreateChargeResult {
 export interface BaturPayAdapterDeps {
   prisma: PrismaClient
   baseUrl?: string
-  apiKey?: string
+  /** Kosongkan untuk memakai `env.BATURPAY_API_KEY`. `null` = tanpa key. */
+  apiKey?: string | null
   fetchImpl?: typeof fetch
 }
 
@@ -84,7 +120,11 @@ export class BaturPayAdapter {
   constructor(deps: BaturPayAdapterDeps) {
     this.prisma = deps.prisma
     this.baseUrl = (deps.baseUrl ?? env.BATURPAY_BASE_URL).replace(/\/$/, '')
-    this.apiKey = deps.apiKey ?? env.BATURPAY_API_KEY ?? null
+    // `undefined` berarti "pakai dari env"; `null` berarti "tepatnya tanpa
+    // API key". Dengan `??`, `null` ikut jatuh ke env — jadi tidak ada cara
+    // mengatakan "jangan pakai key yang ada", dan test bergantung pada isi
+    // berkas .env.
+    this.apiKey = deps.apiKey !== undefined ? deps.apiKey : (env.BATURPAY_API_KEY ?? null)
     this.fetchImpl = deps.fetchImpl ?? fetch
   }
 
@@ -99,12 +139,17 @@ export class BaturPayAdapter {
     body?: unknown,
   ): Promise<{ ok: boolean; status: number; data: T | null; errorCode: string | null; errorMessage: string | null }> {
     if (!this.apiKey) {
+      // Tanpa API key, permintaan apa pun pasti ditolak. Menolak di sini
+      // lebih baik daripada mengirim request yang pasti gagal — dan yang
+      // mungkin mencatat transaksi di sisi provider.
       return {
         ok: false,
         status: 0,
         data: null,
         errorCode: 'NOT_CONFIGURED',
-        errorMessage: 'BaturPay belum dikonfigurasi (BATURPAY_API_KEY kosong).',
+        errorMessage:
+          'Pembayaran otomatis belum dikonfigurasi di server ini (BATURPAY_API_KEY kosong). ' +
+          'Catat pembayaran manual lewat finance_record_payment.',
       }
     }
 
@@ -180,9 +225,17 @@ export class BaturPayAdapter {
     }>('POST', '/v1/charge', {
       amount: input.amount,
       order_id: input.orderId,
-      ...(input.webhookUrl ?? env.BATURPAY_WEBHOOK_SECRET
-        ? { webhook_url: input.webhookUrl ?? defaultWebhookUrl() }
-        : {}),
+      // `webhook_url` dikirim kalau ada yang bisa dipakai.
+      //
+      // Versi sebelumnya menulis `input.webhookUrl ?? env.BATURPAY_WEBHOOK_SECRET`
+      // sebagai kondisi — jadi URL webhook ikut terkirim kalau secret-nya
+      // terisi, dan `undefined` terkirim kalau host-nya localhost. Saat
+      // `webhook_url: undefined` masuk ke JSON, propertinya hilang — jadi
+      // perilakunya kebetulan benar, tapi lewat jalur yang tidak_dimengerti.
+      ...(() => {
+        const url = input.webhookUrl ?? defaultWebhookUrl()
+        return url ? { webhook_url: url } : {}
+      })(),
       ...(input.description ? { description: input.description } : {}),
       ...(input.customerName ? { customer_name: input.customerName } : {}),
       ...(input.customerEmail ? { customer_email: input.customerEmail } : {}),
@@ -230,10 +283,125 @@ export class BaturPayAdapter {
     }
   }
 
+  /**
+   * Tagihan milik organisasi, beserta sisa pembayarannya.
+   *
+   * Sisa dihitung di sini, bukan disimpan — supaya tidak bisa basi.
+   */
+  async getInvoice(
+    organizationId: string,
+    invoiceId: string,
+  ): Promise<{ id: string; number: string; title: string; totalAmount: number; paidAmount: number } | null> {
+    const invoice = await this.prisma.invoice.findFirst({
+      where: { id: invoiceId, organizationId },
+      select: { id: true, number: true, title: true, totalAmount: true, paidAmount: true },
+    })
+    return invoice
+  }
+
   /** URL gambar QR (publik, tanpa auth). */
   qrUrl(orderId: string): string {
     return `${this.baseUrl}/v1/transactions/${encodeURIComponent(orderId)}/qr`
   }
+
+/**
+ * Daftar transaksi dari penyedia.
+ *
+ * `GET /v1/transactions?status=&from=&to=&limit=&offset=` — default 25 baris.
+ * `offset` dipakai, bukan hanya `limit`, supaya halaman berikutnya tidak
+ * mengulang isi halaman pertama.
+ */
+async listRemoteTransactions(
+  options: { status?: string; limit?: number; offset?: number } = {},
+): Promise<Array<{ orderId: string; amount: number; status: PaymentStatus; raw: unknown }>> {
+  const param = new URLSearchParams()
+  if (options.status) param.set('status', options.status)
+  param.set('limit', String(options.limit ?? 25))
+  param.set('offset', String(options.offset ?? 0))
+
+  const response = await this.request<Array<Record<string, unknown>>>(
+    'GET',
+    `/v1/transactions?${param.toString()}`,
+  )
+
+  if (!response.ok || !Array.isArray(response.data)) return []
+
+  return response.data.map((row) => ({
+    orderId: String(row.order_id ?? ''),
+    amount: Number(row.amount ?? 0),
+    status: STATUS_MAP[String(row.status)] ?? 'PENDING',
+    raw: row,
+  }))
+}
+
+/**
+ * Daftar pembayaran yang tercatat di sistem kita.
+ *
+ * Sengaja membaca dari database, bukan dari penyedia: yang perlu dijawab
+ * pengguna adalah pembayaran milik tagsihan yang mana di organisasi ini, dan
+ * itu hanya ada di sini.
+ */
+async listPayments(
+  organizationId: string,
+  options: { status?: PaymentStatus; limit?: number } = {},
+): Promise<
+  Array<{
+    orderId: string
+    amount: number
+    status: PaymentStatus
+    invoiceNumber: string | null
+    createdAt: Date
+  }>
+> {
+  return this.prisma.payment.findMany({
+    where: {
+      organizationId,
+      provider: 'BATURPAY',
+      ...(options.status ? { status: options.status } : {}),
+    },
+    orderBy: { createdAt: 'desc' },
+    take: options.limit ?? 20,
+    select: {
+      providerReference: true,
+      amount: true,
+      status: true,
+      createdAt: true,
+      invoice: { select: { number: true } },
+    },
+  }).then((rows) =>
+    rows.map((row) => ({
+      orderId: row.providerReference ?? '',
+      amount: row.amount,
+      status: row.status,
+      invoiceNumber: row.invoice?.number ?? null,
+      createdAt: row.createdAt,
+    })),
+  )
+}
+
+/** Catat pembayaran yang Charge-nya sudah dibuat di penyedia. */
+async recordPayment(input: {
+  organizationId: string
+  invoiceId: string
+  amount: number
+  orderId: string
+  qrisUrl?: string | null
+}): Promise<{ id: string }> {
+  const payment = await this.prisma.payment.create({
+    data: {
+      organizationId: input.organizationId,
+      invoiceId: input.invoiceId,
+      provider: 'BATURPAY',
+      providerReference: input.orderId,
+      amount: input.amount,
+      status: 'PENDING',
+      metadata: input.qrisUrl ? { qrisUrl: input.qrisUrl } : {},
+    },
+    select: { id: true },
+  })
+  return payment
+}
+
 }
 
 /**
@@ -247,7 +415,7 @@ export interface WebhookOutcome {
   accepted: boolean
   orderId: string | null
   status: PaymentStatus | null
-  action: 'recorded' | 'duplicate' | 'ignored' | 'not_found'
+  action: 'recorded' | 'duplicate' | 'ignored' | 'not_found' | 'amount_mismatch'
 }
 
 export async function handleBaturPayWebhook(
@@ -280,7 +448,7 @@ export async function handleBaturPayWebhook(
 
   const payment = await prisma.payment.findFirst({
     where: { provider: 'BATURPAY', providerReference: orderId },
-    select: { id: true, status: true, organizationId: true },
+    select: { id: true, status: true, organizationId: true, amount: true },
   })
 
   if (!payment) {
@@ -288,13 +456,40 @@ export async function handleBaturPayWebhook(
     return { accepted: true, orderId, status, action: 'not_found' }
   }
 
-  // Status terminal tidak boleh diturunkan (mis. refund lalu settlement).
-  if (TERMINAL_STATUSES.has(payment.status) && payment.status !== status) {
-    log.warn(
-      { orderId, current: payment.status, incoming: status },
-      'status final tidak diubah oleh webhook berikutnya',
+  // ── Verifikasi nominal ───────────────────────────────────────────────────
+  //
+  // Webhook membawa `amount`. Kalau berbeda dari yang kita catat, ada yang
+  // salah — dan menandai `SETTLED` di nominal yang keliru berarti mencatat
+  // uang yang tidak pernah masuk.
+  //
+  // BaturPay melakukan pemeriksaan yang sama pada webhook masuknya
+  // (`AMOUNT_MISMATCH`). Kalau kita tidak, satu-satunya pemeriksaan hilang.
+  if (typeof payload.amount === 'number' && payload.amount !== payment.amount) {
+    log.error(
+      { orderId,expected: payment.amount, received: payload.amount },
+      'nominal webhook tidak cocok dengan pembayaran yang tercatat',
     )
-    return { accepted: true, orderId, status: payment.status, action: 'ignored' }
+    return { accepted: true, orderId, status: payment.status, action: 'amount_mismatch' as never }
+  }
+
+  // ── Aturan perubahan status ──────────────────────────────────────────────
+  //
+  // Yang TIDAK boleh: status final turun ke non-terminal. Contohnya webhook
+  // lama (pending) datang setelah settlement — abide itu statusnya bisa
+  // mundur dan pembayaran yang sudah lunas tercatat belum dibayar.
+  //
+  // Yang WAJIB boleh: pengembalian uang setelah status SETTLED. `refund` dan
+  // `chargeback` adalah peristiwa uang yang nyata; mengabaikannya membuat
+  // buku kas menampilkan uang yang sudah tidak ada milik organisasi.
+  if (TERMINAL_STATUSES.has(payment.status) && payment.status !== status) {
+    const angutBaru = STATUS_ANGKUT.has(status) && !STATUS_ANGKUT.has(payment.status)
+    if (!angutBaru) {
+      log.warn(
+        { orderId, current: payment.status, incoming: status },
+        'status final tidak diturunkan oleh webhook berikutnya',
+      )
+      return { accepted: true, orderId, status: payment.status, action: 'ignored' }
+    }
   }
 
   try {
@@ -315,7 +510,10 @@ export async function handleBaturPayWebhook(
         where: { id: payment.id },
         data: {
           status,
-          ...(status === 'SETTLED' ? { verifiedAt: new Date() } : {}),
+          // `verifiedAt` hanya terisi saat uang benar-benar diterima.
+          // Status yang berubah tidak otomatis berarti uang masuk.
+          ...(STATUS_MASUK.has(status) ? { verifiedAt: new Date() } : {}),
+          ...(status === 'REFUNDED' ? { verifiedAt: null } : {}),
         },
       })
     })
@@ -333,6 +531,13 @@ export async function handleBaturPayWebhook(
   }
 }
 
+/**
+ * URL webhook yang dipakai kalau pemanggil tidak memberikan.
+ *
+ * Tanpa secret, verifikasi signature tidak bisa jalan — jadi webhook tidak
+ * dikirim sama sekali, karena webhook tanpa verifikasi lebih berbahaya daripada
+ * tidak ada: uang akan dicatat dari payload yang bisa dibuat siapa saja.
+ */
 function defaultWebhookUrl(): string | undefined {
   if (!env.BATURPAY_WEBHOOK_SECRET) return undefined
   const host = env.SERVER_HOST

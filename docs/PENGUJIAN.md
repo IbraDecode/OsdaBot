@@ -52,7 +52,32 @@ const dummy = {
 }
 ```
 
-## Unit (456 test) + Integrasi (96 test) + Live (7 test)
+## Unit (465 test) + Integrasi (111 test) + Live (7 test)
+
+### `tests/integration/payments.test.ts` (24 test) — **kode uang**
+
+Semua fakta diambil dari dokumentasi resmi BaturPay. Ke database sungguhan.
+
+- **BUG REGRESSION: `capture` BUKAN status uang masuk.** Dokumentasi: "berhasil
+  tapi belum final". Memetakan ke `SETTLED` mengisi `verifiedAt` untuk uang
+  yang belum final.
+- **BUG REGRESSION: nominal webhook yang tidak cocok tidak menandai lunas.**
+  BaturPay sendiri melakukan ini (`AMOUNT_MISMATCH`); satu-satunya pemeriksaan
+  itu hilang.
+- **BUG REGRESSION: refund setelah lunas HARUS dicatat** — mengabaikannya
+  membuat buku kas menampilkan uang yang sudah tidak ada.
+- Webhook lama **tidak bisa** membatalkan pembayaran yang sudah lunas.
+- **Webhook idempoten** — payload sama tiga kali menghasilkan satu mutasi.
+- Status berbeda → mutasi baru (pending lalu settlement).
+- Webhook order tak dikenal diterima tapi **tidak** membuat pembayaran fiktif.
+- **Nominal pecahan ditolak tanpa menyentuh jaringan.**
+- `expiry_minutes` di luar 1–1440 ditolak (rentang dari dokumentasi).
+- `409 ORDER_EXISTS` diteruskan tanpa mencoba lagi.
+- **API key tidak bocor** ke pesan error.
+- Signature palsu ditolak; body diubah sedikit gagal; timestamp diganti gagal.
+
+> Ada test lama (`tests/unit/server.test.ts`) yang **mengunci perilaku salah**:
+> `capture → SETTLED`. Test diperbarui, bukan hanya kodenya.
 
 ### `tests/integration/media.test.ts` (13 test)
 

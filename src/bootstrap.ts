@@ -14,6 +14,7 @@ import { FinanceService } from './finance/service.js'
 import { GroupLinkService } from './groups/service.js'
 import { DocumentService, LocalStorageDriver } from './documents/service.js'
 import { KnowledgeService } from './knowledge/service.js'
+import { BaturPayAdapter } from './payments/baturpay.js'
 import { AgentRuntime } from './agent/runtime.js'
 import { OpenAiCompatibleProvider } from './agent/llm/openai-compatible.js'
 import { env } from './config/env.js'
@@ -45,6 +46,7 @@ export interface Application {
   groups: GroupLinkService
   documents: DocumentService
   knowledge: KnowledgeService
+  payments: BaturPayAdapter
   tools: ToolRegistry
   skills: SkillRegistry
   agent: AgentRuntime
@@ -120,6 +122,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<Applica
   const groups = new GroupLinkService(prisma)
   const documents = new DocumentService(prisma, new LocalStorageDriver(env.STORAGE_LOCAL_DIR))
   const knowledge = new KnowledgeService(prisma)
+  const payments = new BaturPayAdapter({ prisma })
   const pipeline = new MessagePipeline({
     prisma,
     // Pesan dari grup yang belum tertaut dicatat, bukan dibuang diam-diam.
@@ -155,6 +158,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<Applica
     finance,
     documents,
     knowledge,
+    payments,
     approvals,
     reminders,
   })
@@ -210,6 +214,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<Applica
     groups,
     documents,
     knowledge,
+    payments,
     tools,
     skills,
     agent,

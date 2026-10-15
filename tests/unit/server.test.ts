@@ -88,7 +88,12 @@ describe('pemetaan status BaturPay', () => {
     ['created', 'PENDING'],
     ['pending', 'PENDING'],
     ['settlement', 'SETTLED'],
-    ['capture', 'SETTLED'],
+    // `capture` = "berhasil tapi belum final, akan jadi settlement"
+    // (dokumentasi BaturPay). Dipetakan ke PENDING, bukan SETTLED:
+    // memetakannya ke SETTLED mengisi `verifiedAt` untuk uang yang belum
+    // final — kalau ternyata sengketa, kita sudah mencatat uang yang tidak
+    // pernah masuk.
+    ['capture', 'PENDING'],
     ['expire', 'EXPIRED'],
     ['cancel', 'CANCELLED'],
     ['deny', 'FAILED'],
