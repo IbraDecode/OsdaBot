@@ -15,7 +15,7 @@ pnpm db:migrate && pnpm db:seed && pnpm dev
 
 | | |
 |---|---|
-| Test | **597 lulus, 0 gagal** |
+| Test | **630 lulus, 0 gagal** |
 | Tool | 15 |
 | Skill | 3 |
 | Permission | 50 |
@@ -119,24 +119,32 @@ Yang mana ya?
 - **Identity Engine** — normalisasi nama, deteksi ambiguitas, verifikasi
 - **Attendance** — service ber-scope, idempoten, pelestarian format
 - **Agent Runtime** — tool calling dengan batas keras
-- **Tool Registry** — 15 tool dengan permission & risiko
-- **Skills** — loader Markdown dengan validasi
+- **Tool Registry** — 49 tool dengan permission & risiko
+- **Skills** — 11 skill dari loader Markdown dengan validasi
 - **AI Provider** — terverifikasi terhadap gateway sungguhan
-- **CLI** — 10 perintah operasional yang membaca data nyata
+- **CLI** — 24 perintah operasional yang membaca data nyata
 - **BaturPay adapter** — signature HMAC, idempotensi, anti webhook dobel
+- **Documents** — 5 templat PDF, nomor dokumen unik per organisasi
+- **Knowledge** — pencarian OR dengan stemming Bahasa Indonesia
+- **Finance** — kas, kasbon, tagihan; Rupiah integer, tanpa float
+- **Approvals** — persetujuan lintas chat dengan jejak audit
+- **Tugas** — penugasan, tenggat, dependensi; siklus ditolak
+- **Grup WhatsApp** — tautan per grup, penemuan otomatis saat boot
+- **Lampiran** — unduh media, batas 15 MB
+
+Rinciannya: [docs/STATUS-IMPLEMENTASI.md](./docs/STATUS-IMPLEMENTASI.md)
 
 ## Yang belum ada
 
 Disebutkan terbuka supaya tidak ada kejutan:
 
-- **Automation / BullMQ** — model data siap, worker belum
-- **Document engine** — PDF/DOCX/XLSX
-- **Knowledge engine** — pencarian pengetahuan organisasi
-- **Finance engine** — schema siap, service belum
-- **Approval engine** — interface ada, implementasi belum
-- **Multi-agent** — belum
+- **Workflow engine** — `WorkflowRun` masih kosong; alur kerja otomatis belum ada
+- **Multi-agent** — `AgentTask` masih kosong; satu pesan diproses sekali jalan
+- **Penyusunan kebutuhan lewat chat** — `ActiveTask` masih kosong
+- **Monitoring** — tidak ada deteksi percakapan yang memburuk
+- **Rotasi kredensial `.env`** — belum dilakukan; **wajib sebelum repo publik**
 
-Rinciannya: [docs/STATUS-IMPLEMENTASI.md](./docs/STATUS-IMPLEMENTASI.md)
+Rinciannya: [docs/AUDIT.md](./docs/AUDIT.md)
 
 ## Yang belum terverifikasi
 

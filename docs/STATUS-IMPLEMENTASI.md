@@ -22,25 +22,32 @@ Status memakai lima tingkat:
 | Identity engine | `TESTED` | 19 test unit + integrasi DB |
 | Otorisasi (RBAC) | `TESTED` | Test membuktikan tool tidak dijalankan |
 | Attendance service | `TESTED` | Formatter + idempotensi + scope |
+| Task service | `TESTED` | 33 test integrasi, siklus & lintas-organisasi ditolak |
+| Payment adapter | `TESTED` | 28 test, idempotensi + verifikasi webhook |
 | Skill registry | `TESTED` | Loader + validasi metadata |
 | AI provider | `VERIFIED` | **Diuji terhadap gateway sungguhan** |
 | Agent runtime | `TESTED` | Tool calling + batas loop |
 | Message pipeline | `TESTED` | Dedupe + rate limit + aktivasi grup |
-| Tool registry | `TESTED` | 15 tool, otorisasi per tool |
+| Tool registry | `TESTED` | 49 tool, otorisasi per tool |
 | HTTP server | `TESTED` | `/health`, `/ready` jalan |
-| CLI | `IMPLEMENTED` | 10 perintah, membaca data nyata |
+| CLI | `IMPLEMENTED` | 24 perintah, membaca data nyata |
 | WhatsApp handshake | `VERIFIED` | Noise handshake berhasil, QR & pairing code dibuat |
 | WhatsApp pairing config | `VERIFIED` | Konfigurasi platform & kebijakan reconnect diperbaiki |
 | WhatsApp pairing blocker | `VERIFIED` | 429 rate-overlimit; guard sudah terbukti berfungsi |
 | **WhatsApp pairing** | `BLOCKED` | Menunggu cooldown server sebelum mencoba lagi |
 | **WhatsApp live** | `NOT VERIFIED` | Adapter ada, pairing belum selesai |
 | **BaturPay live** | `NOT VERIFIED` | Adapter ada, transaksi belum |
-| Automation / BullMQ | `NOT IMPLEMENTED` | — |
-| Document engine | `NOT IMPLEMENTED` | — |
-| Knowledge engine | `NOT IMPLEMENTED` | — |
-| Finance engine | `NOT IMPLEMENTED` | Skema ada, service belum |
-| Multi-agent | `NOT IMPLEMENTED` | — |
-| Approval engine | `SCAFFOLDED` | Interface ada, implementasi belum |
+| Scheduled reminders | `TESTED` | PostgreSQL sebagai sumber kebenaran |
+| Group linking | `TESTED` | CLI + tool, penemuan otomatis |
+| Attachment media | `TESTED` | Unduh + cache, batas 15 MB |
+| Workflow engine | `NOT IMPLEMENTED` | `WorkflowRun` masih mati |
+| Document engine | `TESTED` | 5 templat PDF, nomor unik, ekstraksi teks |
+| Knowledge engine | `TESTED` | OR-semantics, stemming Indonesia |
+| Finance engine | `TESTED` | 7 tool, Rupiah integer, jejak audit |
+| Multi-agent | `NOT IMPLEMENTED` | `AgentTask` masih mati |
+| Monitoring | `NOT IMPLEMENTED` | 3 model monitoring masih mati |
+| Task collection | `NOT IMPLEMENTED` | `ActiveTask` masih mati |
+| Approval engine | `TESTED` | 8 test integrasi, RBAC ditegakkan |
 
 ## Yang sudah berfungsi
 
@@ -115,12 +122,12 @@ Setiap perintah **membaca kondisi nyata** dari database dan provider.
 
 | Yang diukur | Nilai |
 |---|---|
-| **Test total** | **597 lulus, 0 gagal** (3 skipped) |
+| **Test total** | **630 lulus, 0 gagal** (3 skipped) |
 | Unit | 457 lulus |
-| Integrasi | 133 lulus |
+| Integrasi | 166 lulus |
 | Live (opsional) | 7 lulus dengan `RUN_LIVE_TESTS=true` |
-| Tool terdaftar | 43 |
-| Skill termuat | 10 |
+| Tool terdaftar | 49 |
+| Skill termuat | 11 |
 | Permission | 50 |
 | Model database | 38 |
 | TypeScript errors | 0 |

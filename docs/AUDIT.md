@@ -1,6 +1,6 @@
 # Audit Kemampuan
 
-Status: **IMPLEMENTED** · **TESTED** (590 test lulus, 0 gagal)
+Status: **IMPLEMENTED** · **TESTED** (630 test lulus, 0 gagal)
 
 `tests/integration/capability-audit.test.ts`
 
@@ -58,20 +58,34 @@ Yang **sengaja** tidak ada:
 diberikan ke peran pengguna. Dicatat eksplisit supaya tidak hilang karena
 kelalaian.
 
-### Tabel mati: 17 model
+### Tabel mati: 17 model → tersisa 12
 
 Ini bagian yang paling perlu jujur. Schema berisi model untuk fitur yang
 **tidak pernah dibangun**:
 
-- Sistem tugas: `ActiveTask`, `TaskAssignment`, `TaskDependency`
+- Sistem tugas: `ActiveTask`, ~~`TaskAssignment`~~, ~~`TaskDependency`~~
 - Mesin alur kerja: `WorkflowRun`
 - Rekaman agent: `AgentTask`, `AgentStep`
 - Monitoring: `MonitoringConfiguration`, `OrganizationSignal`, `Recommendation`
 - Versi skill: `SkillRecord`, `SkillVersion`
-- Operasional: `IdempotencyKey`, `MessageDelivery`, `OrganizationSetting`
+- Operasional: ~~`IdempotencyKey`~~, `MessageDelivery`, `OrganizationSetting`
 
-Semuanya kini tercatat beserta alasannya. Tapi **"tercatat" bukan
-"terpasang"** — ini daftar utang, bukan daftar fitur.
+Yang dicoret sudah dipasang: sistem tugas pada `docs/TUGAS.md`, idempotensi
+pembayaran dan nomor dokumen pada commit `23f672e`.
+
+Tercoret ≠ selesai. Yang tersisa masih daftar utang:
+
+| Yang tersisa | Kenapa belum |
+|---|---|
+| `ActiveTask` | Menyusun kebutuhan lewat percakapan — tugas yang bentuknya belum jelas. Butuh_model berbeda. |
+| `WorkflowRun` | Mesin alur kerja otomatis. Skala besar, dan belum ada yang benar-benar butuh. |
+| `AgentTask`, `AgentStep` | Menyimpan langkah agent. Sekarang satu pesan diproses sekali jalan tanpa jejak. |
+| `MonitoringConfiguration`, `OrganizationSignal`, `Recommendation` | Monitoring agent belum ada sama sekali. |
+| `SkillRecord`, `SkillVersion` | Skill dimuat dari berkas. Versi di database belum ada kebutuhan nyata. |
+| `MessageDelivery`, `OrganizationSetting` | Pelacakan per pesan dan pengaturan per organisasi belum ada. |
+
+Jadi **"tercatat" bukan "terpasang"**, dan حتى yang sudah dipasang belum
+berarti mengroversi akan dikecualikan.
 
 ### `IdempotencyKey` menjelaskan celah yang saya laporkan sendiri
 
@@ -80,7 +94,17 @@ Saya menulis di `docs/DOKUMEN.md`:
 > Nomor bisa bentrok bila dua dokumen dibuat bersamaan.
 
 Tabel `IdempotencyKey` sudah ada sejak awal — dirancang untuk pengaman itu —
-tapi tidak pernah dipakai. Utang yang bisa saya lihat, belum saya bayarkan.
+tapi tidak pernah dipakai.
+
+**Sudah dibayar** (commit `23f672e`): kunci idempotensi sekarang dipakai untuk
+pembayaran, dan nomor dokumen dikunci dengan constraint `UNIQUE`. Constraint itu
+membongkar bug laten: penomoran menyaring per jenis dokumen, sementara
+keunikannya per organisasi — surat izin dan surat tugas sama-sama
+menghasilkan `SURAT/2026/001`.
+
+**Sistem tugas juga dibayar** (`docs/TUGAS.md`): `TaskAssignment` dan
+`TaskDependency` sekarang dipakai. Yang tersisa `ActiveTask` — itu bukan
+"sistem tugas", itu menyusun kebutuhan, dan butuh model berbeda.
 
 ---
 
@@ -123,7 +147,7 @@ Yang **tidak** bisa diselesaikan dengan menulis dokumentasi:
 
 | Utang | Dampak | Status |
 |---|---|---|
-| Sistem tugas belum ada | Tidak ada penugasan, tenggat, atau dependensi tugas. | Utang |
+| `ActiveTask` belum dipakai | Menyusun kebutuhan lewat percakapan belum ada. | Utang |
 | `WorkflowRun` belum dipakai | Tidak ada alur kerja otomatis. | Utang |
 | Monitoring belum ada | Tidak ada deteksi untuk percakapan yang memburuk. | Utang |
 | `system.safe_mode` tidak ada mekanismenya | Tidak ada tombol darurat saat ada gangguan. | Utang |

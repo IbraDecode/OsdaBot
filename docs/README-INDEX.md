@@ -22,6 +22,15 @@ diperbarui di perubahan yang sama.
 | [KEAMANAN.md](./KEAMANAN.md) | RBAC, otorisasi, batas keamanan |
 | [DATABASE.md](./DATABASE.md) | Skema, aturan, migrasi |
 | [PEMBAYARAN.md](./PEMBAYARAN.md) | Integrasi BaturPay & keamanan webhook |
+| [BAYAR.md](./BAYAR.md) | Temuan audit kode uang BaturPay |
+| [KEUANGAN.md](./KEUANGAN.md) | Kas, kasbon, tagihan; aturan uang |
+| [DOKUMEN.md](./DOKUMEN.md) | Dokumen PDF, penomoran, ekstraksi |
+| [EKSTRAKSI-PDF.md](./EKSTRAKSI-PDF.md) | Cara teks keluar dari PDF |
+| [TUGAS.md](./TUGAS.md) | Sistem tugas: penugasan, tenggat, dependensi |
+| [GRUP.md](./GRUP.md) | Tautan grup WhatsApp ke organisasi |
+| [PENGETAHUAN.md](./PENGETAHUAN.md) | Mesin pengetahuan organisasi |
+| [LAMPIRAN.md](./LAMPIRAN.md) | Unduh media & batas cache |
+| [AUDIT.md](./AUDIT.md) | **Daftar utang + invarian "yang diklaim harus bisa dipakai"** |
 | [PENGOPERASIAN.md](./PENGOPERASIAN.md) | Menjalankan, diagnose, troubleshoot |
 | [PENGUJIAN.md](./PENGUJIAN.md) | Strategi test & cara menjalankan |
 | [STATUS-IMPLEMENTASI.md](./STATUS-IMPLEMENTASI.md) | Apa yang sudah ada, apa yang belum |
