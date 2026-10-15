@@ -12,6 +12,7 @@ import { ToolApprovalExecutor } from './approvals/executor.js'
 import { AttendanceService } from './attendance/service.js'
 import { FinanceService } from './finance/service.js'
 import { GroupLinkService } from './groups/service.js'
+import { DocumentService, LocalStorageDriver } from './documents/service.js'
 import { AgentRuntime } from './agent/runtime.js'
 import { OpenAiCompatibleProvider } from './agent/llm/openai-compatible.js'
 import { env } from './config/env.js'
@@ -41,6 +42,7 @@ export interface Application {
   attendance: AttendanceService
   finance: FinanceService
   groups: GroupLinkService
+  documents: DocumentService
   tools: ToolRegistry
   skills: SkillRegistry
   agent: AgentRuntime
@@ -114,6 +116,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<Applica
 
   // --- Lapis pipeline -----------------------------------------------------
   const groups = new GroupLinkService(prisma)
+  const documents = new DocumentService(prisma, new LocalStorageDriver(env.STORAGE_LOCAL_DIR))
   const pipeline = new MessagePipeline({
     prisma,
     // Pesan dari grup yang belum tertaut dicatat, bukan dibuang diam-diam.
@@ -147,6 +150,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<Applica
     whatsapp,
     attendance,
     finance,
+    documents,
     approvals,
     reminders,
   })
@@ -200,6 +204,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<Applica
     attendance,
     finance,
     groups,
+    documents,
     tools,
     skills,
     agent,

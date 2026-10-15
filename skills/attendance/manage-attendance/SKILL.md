@@ -9,6 +9,7 @@ required_tools:
   - attendance_add_member
   - attendance_update
   - attendance_get_unconfirmed
+  - organization_get_events
 required_permissions:
   - attendance.read
   - attendance.update
@@ -27,6 +28,12 @@ triggers:
 ## Tujuan
 Membantu pengelola dan anggota mengelola daftar hadir lewat bahasa sehari-hari, tanpa
 menyuruh mereka menghafal perintah atau ID.
+
+## Kegiatan yang sudah tercatat
+
+`organization_get_events` untuk melihat kegiatan beserta tanggalnya. Pakai ini
+kalau pengguna menyebut kegiatan yang belum pernah dibuat daftarnya — daftar
+harus dibuat lebih dulu dengan `attendance_create`.
 
 ## Alur yang benar
 

@@ -30,8 +30,12 @@ const envSchema = z
     DATABASE_URL: z.string().min(1, 'DATABASE_URL wajib diisi'),
     DATABASE_DIRECT_URL: optionalString,
 
-    // --- Redis ---
-    REDIS_URL: z.string().min(1, 'REDIS_URL wajib diisi'),
+    // Redis TIDAK lagi dipakai. Outbox dan pengingat memakai PostgreSQL
+    // sebagai sumber kebenaran — kalau job hilang dari Redis, yang hilang juga
+    // catatan pengirimannya. Variabel ini dibiarkan opsional supaya berkas
+    // `.env` lama tidak langsung rusak; kalau nanti dibutuhkan, kembalikan
+    // ke `z.string().min(1)`.
+    REDIS_URL: optionalString,
 
     // --- AI Provider ---
     AI_BASE_URL: z.string().url('AI_BASE_URL harus URL valid'),
@@ -108,24 +112,20 @@ const envSchema = z
       })
     }
 
-    // Penyimpanan S3 wajib lengkap semua variabelnya.
+    // Penyimpanan S3 BELUM diimplementasikan — hanya `local` yang jalan.
+    //
+    // Diam-diam jatuh ke disk lokal jauh lebih berbahaya: operator
+    // menyiapkan bucket dan kredensial, lalu dokumen resmi justru tersimpan
+    // di disk container yang hilang saat di-restart. Gagal booting lebih
+    // jujur daripada menyimpan di tempat yang tidak diminta.
     if (value.STORAGE_DRIVER === 's3') {
-      const wajib = [
-        ['AWS_ENDPOINT_URL_S3', value.AWS_ENDPOINT_URL_S3],
-        ['AWS_REGION', value.AWS_REGION],
-        ['AWS_ACCESS_KEY_ID', value.AWS_ACCESS_KEY_ID],
-        ['AWS_SECRET_ACCESS_KEY', value.AWS_SECRET_ACCESS_KEY],
-        ['AWS_BUCKET', value.AWS_BUCKET],
-      ] as const
-      for (const [name, val] of wajib) {
-        if (!val) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: [name],
-            message: `${name} wajib diisi saat STORAGE_DRIVER=s3`,
-          })
-        }
-      }
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['STORAGE_DRIVER'],
+        message:
+          'STORAGE_DRIVER=s3 belum diimplementasikan. Pakai STORAGE_DRIVER=local, ' +
+          'atau implementasikan S3StorageDriver di src/documents/service.ts.',
+      })
     }
 
     // Nomor WhatsApp divalidasi sebagai digits + kode negara.

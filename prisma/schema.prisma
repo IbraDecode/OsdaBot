@@ -770,6 +770,12 @@ model DocumentRecord {
   title          String
   documentType   String
   format         String
+  /// Nomor resmi dokumen, mis. "SURAT/2026/001".
+  ///
+  /// Kolom sendiri, BUKAN diturunkan dari judul. Menentukannya dari teks
+  /// judul rapuh: ubah judul, nomor ikut berubah atau bentrok — dan nomor
+  /// surat yang bentrok berarti dua dokumen resmi punya identitas yang sama.
+  documentNumber String?
   storageKey     String?
   mimeType       String?
   sizeBytes      Int?
@@ -782,6 +788,7 @@ model DocumentRecord {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, documentType])
+  @@index([organizationId, documentNumber])
 }
 
 model KnowledgeDocument {

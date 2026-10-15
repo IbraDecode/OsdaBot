@@ -415,17 +415,25 @@ describe('tagihan dan pembayaran', () => {
     const belumLunas = await buatTagihan('Tagihan Belum Lunas Uji', 60_000)
     await jalankan('finance_record_payment', { invoiceId: belumLunas, amount: '20000', financeAccountId: akunId })
 
-    // Yang sudah lunas dibuat lebih dulu supayasorting tidak menyelamatkan test.
+    // Yang sudah lunas dibuat lebih dulu supaya sorting tidak menyelamatkan test.
     const sudahLunas = await buatTagihan('Tagihan Sudah Lunas Uji', 40_000)
     await jalankan('finance_record_payment', { invoiceId: sudahLunas, amount: '40000', financeAccountId: akunId })
 
-    const hasil = await jalankan('finance_list_invoices', { status: 'all' })
-    const invoice = (data(hasil).invoices as Array<{ invoiceId: string }>).map((t) => t.invoiceId)
+    // Diuji lewat service, bukan lewat tool.
+    //
+    // Versi sebelumnya memakai `finance_list_invoices`, yang membatasi 20
+    // baris. Karena database uji menumpuk tagihan dari run sebelumnya, tagihan
+    // "sudah lunas" bisa jatuh di luar batas itu — test gagal bukan karena
+    // urutannya salah, tapi karena yang diuji bukan aturannya.
+    //
+    // Yang diuji persis aturannya: tagihan belum lunas mendahului yang sudah
+    // lunas, terlepas dari berapa banyak tagihan lain yang ada.
+    const semua = await app.finance.listInvoices(ORG, { limit: 500 })
+    const urutan = semua.map((t) => t.id)
 
-    // Pesan kegagalan menyebut urutan yang salah, supaya bug-nya jelas.
-    expect({ tagihanBelumLunas: invoice.indexOf(belumLunas), tagihanLunas: invoice.indexOf(sudahLunas) })
-      .toEqual({ tagihanBelumLunas: expect.any(Number), tagihanLunas: expect.any(Number) })
-    expect(invoice.indexOf(belumLunas)).toBeLessThan(invoice.indexOf(sudahLunas))
+    expect(urutan.indexOf(belumLunas), 'tagihan parsial harus ditemukan').toBeGreaterThanOrEqual(0)
+    expect(urutan.indexOf(sudahLunas), 'tagihan lunas harus ditemukan').toBeGreaterThanOrEqual(0)
+    expect(urutan.indexOf(belumLunas)).toBeLessThan(urutan.indexOf(sudahLunas))
   })
 })
 

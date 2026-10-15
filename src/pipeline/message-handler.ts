@@ -20,7 +20,9 @@ import { buildAttendanceTools } from '../tools/attendance-tools.js'
 import { buildOrganizationTools } from '../tools/organization-tools.js'
 import { buildReminderTools } from '../tools/reminder-tools.js'
 import { buildFinanceTools } from '../tools/finance-tools.js'
+import { buildDocumentTools } from '../tools/document-tools.js'
 import type { FinanceService } from '../finance/service.js'
+import type { DocumentService } from '../documents/service.js'
 import { prismaForRegistry } from '../bootstrap.js'
 import type { ToolRegistry } from '../tools/registry.js'
 import type { MessagePipeline } from './message-pipeline.js'
@@ -35,7 +37,7 @@ const CAPABILITIES: Array<{ name: string; description: string; status: string }>
   { name: 'Kirim pesan', description: 'Kirim pesan WhatsApp setelah kamu setujui.', status: 'enabled' },
   { name: 'Jadwal & Pengingat', description: 'Buat, lihat, dan batalkan pengingat terjadwal.', status: 'enabled' },
   { name: 'Keuangan', description: 'Catat kas, buat tagihan, dan terima pembayaran.', status: 'enabled' },
-  { name: 'Dokumen (PDF/DOCX)', description: 'Buat berkas PDF atau Word.', status: 'planned' },
+  { name: 'Dokumen', description: 'Buat surat izin, surat tugas, sertifikat, dan daftar hadir dalam PDF.', status: 'enabled' },
 ]
 
 export interface MessageHandlerDeps {
@@ -47,6 +49,7 @@ export interface MessageHandlerDeps {
   whatsapp: WhatsAppProvider
   attendance: AttendanceService
   finance: FinanceService
+  documents: DocumentService
   /**
    * Engine persetujuan.
    *
@@ -81,6 +84,14 @@ export class MessageHandler {
       buildFinanceTools({
         finance: this.deps.finance,
         identity: this.deps.identity,
+      }) as never,
+    )
+    this.deps.tools.registerAll(
+      buildDocumentTools({
+        documents: this.deps.documents,
+        identity: this.deps.identity,
+        attendance: this.deps.attendance,
+        whatsapp: this.deps.whatsapp,
       }) as never,
     )
     log.info({ tools: this.deps.tools.names().length }, 'tool terdaftar')
