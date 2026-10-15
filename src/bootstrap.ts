@@ -10,6 +10,7 @@
 import { ApprovalEngine } from './approvals/engine.js'
 import { ToolApprovalExecutor } from './approvals/executor.js'
 import { AttendanceService } from './attendance/service.js'
+import { FinanceService } from './finance/service.js'
 import { AgentRuntime } from './agent/runtime.js'
 import { OpenAiCompatibleProvider } from './agent/llm/openai-compatible.js'
 import { env } from './config/env.js'
@@ -37,6 +38,7 @@ export interface Application {
   authorization: AuthorizationService
   identity: IdentityEngine
   attendance: AttendanceService
+  finance: FinanceService
   tools: ToolRegistry
   skills: SkillRegistry
   agent: AgentRuntime
@@ -68,6 +70,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<Applica
   // --- Lapis identitas & domain -------------------------------------------
   const identity = new IdentityEngine({ prisma })
   const attendance = new AttendanceService({ prisma })
+  const finance = new FinanceService(prisma)
 
   // --- Lapis tool ---------------------------------------------------------
   const tools = new ToolRegistry({ prisma, logger: log, ...(options.maxToolCalls ? { maxCallsPerRun: options.maxToolCalls } : {}) })
@@ -129,6 +132,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<Applica
     skills,
     whatsapp,
     attendance,
+    finance,
     approvals,
     reminders,
   })
@@ -180,6 +184,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<Applica
     authorization,
     identity,
     attendance,
+    finance,
     tools,
     skills,
     agent,

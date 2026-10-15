@@ -19,6 +19,8 @@ import { parseJid } from '../whatsapp/jid.js'
 import { buildAttendanceTools } from '../tools/attendance-tools.js'
 import { buildOrganizationTools } from '../tools/organization-tools.js'
 import { buildReminderTools } from '../tools/reminder-tools.js'
+import { buildFinanceTools } from '../tools/finance-tools.js'
+import type { FinanceService } from '../finance/service.js'
 import { prismaForRegistry } from '../bootstrap.js'
 import type { ToolRegistry } from '../tools/registry.js'
 import type { MessagePipeline } from './message-pipeline.js'
@@ -32,7 +34,7 @@ const CAPABILITIES: Array<{ name: string; description: string; status: string }>
   { name: 'Pengumuman & Undangan', description: 'Susun draf pengumuman atau undangan resmi.', status: 'enabled' },
   { name: 'Kirim pesan', description: 'Kirim pesan WhatsApp setelah kamu setujui.', status: 'enabled' },
   { name: 'Jadwal & Pengingat', description: 'Buat, lihat, dan batalkan pengingat terjadwal.', status: 'enabled' },
-  { name: 'Keuangan', description: 'Catatan kas dan tagihan.', status: 'planned' },
+  { name: 'Keuangan', description: 'Catat kas, buat tagihan, dan terima pembayaran.', status: 'enabled' },
   { name: 'Dokumen (PDF/DOCX)', description: 'Buat berkas PDF atau Word.', status: 'planned' },
 ]
 
@@ -44,6 +46,7 @@ export interface MessageHandlerDeps {
   skills: SkillRegistry
   whatsapp: WhatsAppProvider
   attendance: AttendanceService
+  finance: FinanceService
   /**
    * Engine persetujuan.
    *
@@ -72,6 +75,12 @@ export class MessageHandler {
       buildReminderTools({
         prisma: prismaForRegistry(this.deps.tools),
         reminders: this.deps.reminders,
+      }) as never,
+    )
+    this.deps.tools.registerAll(
+      buildFinanceTools({
+        finance: this.deps.finance,
+        identity: this.deps.identity,
       }) as never,
     )
     log.info({ tools: this.deps.tools.names().length }, 'tool terdaftar')
