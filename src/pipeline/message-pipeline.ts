@@ -126,8 +126,16 @@ export class MessagePipeline {
     // 1. Jangan proses pesan kita sendiri.
     if (message.isFromMe) return { action: 'skip', reason: 'own_message' }
 
-    // 2. Hanya pesan teks (dan caption media) yang diproses.
-    if (!message.text || message.text.trim() === '') {
+    // 2. Pesan kosong dilewati — kecuali yang membawa lampiran.
+    //
+    // PDF atau foto yang dikirim tanpa caption bukan pesan kosong: isinya
+    // justru seluruh pesan. Melewatkannya membuat pengguna mengira
+    // lampirannya tidak pernah sampai.
+    const adaTeks = Boolean(message.text && message.text.trim() !== '')
+    const adaLampiran =
+      message.type === 'document' || message.type === 'image' || message.type === 'video'
+
+    if (!adaTeks && !adaLampiran) {
       return { action: 'skip', reason: 'empty_text' }
     }
 

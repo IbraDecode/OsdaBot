@@ -40,8 +40,8 @@ import makeWASocket, {
   Browsers,
   DEFAULT_CACHE_TTLS,
   DisconnectReason,
-  UNAUTHORIZED_CODES,
   downloadMediaMessage,
+  UNAUTHORIZED_CODES,
   getContentType,
   getKeyAuthor,
   isLidUser,
@@ -73,6 +73,21 @@ import type {
 } from './types.js'
 
 const log = logger.child({ module: 'baileys' })
+
+/** Batas jumlah pesan mentah yang disimpan untuk unduhan lampiran. */
+const UKURAN_CACHE_MEDIA = 100
+
+/** Lampiran hanya bisa diunduh dalam 15 menit setelah pesan masuk. */
+const MASA_BERLAKU_MEDIA_MS = 15 * 60 * 1000
+
+/**
+ * Batas ukuran lampiran yang diproses: 15 MB.
+ *
+ * PDF hasil pindai bisa berukuran besar, tapi memuatnya ke memori tanpa batas
+ * berarti satu pesan bisa menjatuhkan seluruh proses. Lebih baik ditolak
+ * dengan pesan yang bisa dibaca.
+ */
+const MAKS_UKURAN_MEDIA = 15 * 1024 * 1024
 
 /**
  * Logger untuk Baileys sendiri.
@@ -237,6 +252,14 @@ export class BaileysProvider implements WhatsAppProvider {
   readonly name = 'baileys'
 
   private sock: WASocket | null = null
+
+  /**
+   * Pesan mentah yang masih bisa diunduh.
+   *
+   * `downloadMediaMessage` butuh `WAMessage` asli. Object itu cukup besar dan
+   * tidak boleh disimpan selamanya, jadi ada batas jumlah dan masa berlaku.
+   */
+  private mediaCache = new Map<string, { message: WAMessage; disimpanPada: number }>()
   private listeners: ListenerMap = {
     message: new Set(),
     connection: new Set(),
@@ -665,6 +688,49 @@ export class BaileysProvider implements WhatsAppProvider {
     }
   }
 
+  /**
+   * Unduh lampiran pesan.
+   *
+   * Pesan harus masih ada di cache — yang disimpan hanya berumur
+   * {@link MASA_BERLAKU_MEDIA_MS}. Setelah lewat, isinya tidak bisa diunduh
+   * lagi dan pemanggil harus meminta pengguna mengirim ulang.
+   *
+   * Ukuran dibatasi **sebelum** Penuh diunduh: stream dari WhatsApp bisa
+   * ratusan megabyte, dan memuatnya seluruhnya ke memori bisa menjatuhkan
+   * proses sebelum ukurannya sempat diperiksa.
+   */
+  /**
+   * Unduh lampiran berdasarkan id pesannya.
+   *
+   * Pesan harus masih ada di cache — yang disimpan hanya berumur
+   * {@link MASA_BERLAKU_MEDIA_MS}. Setelah lewat, isinya tidak bisa diunduh
+   * lagi dan pemanggil harus meminta pengguna mengirim ulang.
+   *
+   * Ukuran diperiksa **setelah** unduhan. Batasi stream dari sisi Baileys
+   * butuh API yang tidak ada di versi ini, jadi satu lampiran besar bisa
+   * sempat memakai memori — makanya jumlahnya dibatasi (100 berkas) dan tidak
+   * ada yang mengunduh otomatis tanpa diminta pengguna.
+   */
+  async downloadMediaById(messageId: string): Promise<Buffer | null> {
+    const tersimpan = this.mediaCache.get(messageId)
+    if (!tersimpan) return null
+
+    if (Date.now() - tersimpan.disimpanPada > MASA_BERLAKU_MEDIA_MS) {
+      this.mediaCache.delete(messageId)
+      return null
+    }
+
+    const buffer = await this.downloadMedia(tersimpan.message)
+    if (!buffer) return null
+
+    if (buffer.byteLength > MAKS_UKURAN_MEDIA) {
+      log.warn({ messageId, ukuran: buffer.byteLength }, 'lampiran terlalu besar, tidak diproses')
+      return null
+    }
+
+    return buffer
+  }
+
   async getGroupMetadata(groupJid: string): Promise<NormalizedGroupMetadata | null> {
     const sock = this.sock
     const jid = normalizeJid(groupJid)
@@ -752,10 +818,35 @@ export class BaileysProvider implements WhatsAppProvider {
     const normalized = await this.normalizeMessage(message)
     if (!normalized) return
 
-    // Hanya pesan teks (dan caption media) yang diproses untuk sekarang.
-    if (!normalized.text) return
+    // Simpan pesan mentah supaya media-nya bisa diunduh belakangan.
+    //
+    // `downloadMediaMessage` butuh `WAMessage` asli (mediaKey, directPath),
+    // bukan bentuk yang sudah dinormalisasi. Setelah pesan keluar dari cache
+    // ini, isinya tidak bisa diunduh lagi — dan itu memang batasnya.
+    if (normalized.type !== 'text' && normalized.type !== 'reaction') {
+      this.rawnyaSimpan(normalized.id, message)
+    }
+
+    // Pesan TANPA teks TIDAK dibuang.
+    //
+    // Versi lama loudspeaker: `if (!normalized.text) return`. Akibatnya PDF
+    // atau foto yang dikirim tanpa caption hilang sebelum sampai ke pipeline —
+    // pengguna mengira bot tidak Britannia membaca lampirannya.
+    //
+    // Reaksi tetap dibuang: itu bukan sesuatu yang perlu diproses.
+    if (normalized.type === 'reaction') return
 
     this.emit('message', normalized)
+  }
+
+  /** Simpan pesan mentah dengan masa berlaku. */
+  private rawnyaSimpan(id: string, message: WAMessage): void {
+    if (this.mediaCache.size >= UKURAN_CACHE_MEDIA) {
+      // Buang yang paling tua — Map mempertahankan urutan sisip.
+      const tertua = this.mediaCache.keys().next()
+      if (!tertua.done) this.mediaCache.delete(tertua.value)
+    }
+    this.mediaCache.set(id, { message, disimpanPada: Date.now() })
   }
 
   private async normalizeMessage(message: WAMessage): Promise<NormalizedMessage | null> {

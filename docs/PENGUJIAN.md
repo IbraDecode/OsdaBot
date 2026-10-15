@@ -52,7 +52,24 @@ const dummy = {
 }
 ```
 
-## Unit (456 test) + Integrasi (83 test) + Live (7 test)
+## Unit (456 test) + Integrasi (96 test) + Live (7 test)
+
+### `tests/integration/media.test.ts` (13 test)
+
+Jalur lampiran pesan:
+
+- **Pesan media tanpa caption TIDAK dibuang** — Closed ini bug yang membuat
+  PDF yang dikirim tanpa keterangan hilang sebelum sampai ke agent.
+- Pesan kosong **tanpa** lampiran tetap ditolak.
+- **`media_pending` menandai format yang belum didukung** sebagai tidak terbaca.
+- **Membaca teks dari PDF lampiran** — isinya benar-benar terbaca.
+- **Lampiran kedaluwarsa ditolak** dengan pesan "tolong kirim ulang".
+- **Berkas rusak tidak menghasilkan teks palsu**; pesannya bisa dibaca manusia.
+- Isi lampiran yang disimpan **benar-benar bisa dicari**.
+
+> **Pelajaran berulang:** enam test pertama gagal karena `actorUserId: null`.
+> RBAC menolak di lapisan izin **sebelum** tool dipanggil. Pola yang sama sudah
+> terjadi di test persetujuan — sekarang memakai aktor nyata sejak awal.
 
 ### `tests/unit/pdf-extract.test.ts` (6 test)
 

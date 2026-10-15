@@ -115,12 +115,12 @@ Setiap perintah **membaca kondisi nyata** dari database dan provider.
 
 | Yang diukur | Nilai |
 |---|---|
-| **Test total** | **546 lulus, 0 gagal** (3 skipped) |
+| **Test total** | **559 lulus, 0 gagal** (3 skipped) |
 | Unit | 456 lulus |
-| Integrasi | 83 lulus |
+| Integrasi | 96 lulus |
 | Live (opsional) | 7 lulus dengan `RUN_LIVE_TESTS=true` |
-| Tool terdaftar | 34 |
-| Skill termuat | 7 |
+| Tool terdaftar | 37 |
+| Skill termuat | 8 |
 | Permission | 50 |
 | Model database | 38 |
 | TypeScript errors | 0 |

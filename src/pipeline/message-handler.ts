@@ -22,6 +22,7 @@ import { buildReminderTools } from '../tools/reminder-tools.js'
 import { buildFinanceTools } from '../tools/finance-tools.js'
 import { buildDocumentTools } from '../tools/document-tools.js'
 import { buildKnowledgeTools } from '../tools/knowledge-tools.js'
+import { buildMediaTools } from '../tools/media-tools.js'
 import type { FinanceService } from '../finance/service.js'
 import type { DocumentService } from '../documents/service.js'
 import type { KnowledgeService } from '../knowledge/service.js'
@@ -30,6 +31,42 @@ import type { ToolRegistry } from '../tools/registry.js'
 import type { MessagePipeline } from './message-pipeline.js'
 
 const log = logger.child({ module: 'handler' })
+
+/** Metadata lampiran yang perlu diingat per percakapan. */
+interface MediaPendek {
+  messageId: string
+  fileName: string | null
+  mimetype: string | null
+  type: string
+}
+
+/**
+ * Ambil metadata lampiran dari pesan.
+ *
+ * Hanya `document` dan `image` — stiker dan audio tidak punya teks yang bisa
+ * dipakai, dan memper liberallykan tipe membuat cache terisi pesan yang tidak
+ * pernah bisa dibaca.
+ */
+function ambilLampiran(message: import('../whatsapp/types.js').NormalizedMessage): MediaPendek | null {
+  if (message.type !== 'document' && message.type !== 'image') return null
+  return {
+    messageId: message.id,
+    fileName: message.fileName,
+    mimetype: message.mimetype,
+    type: message.type,
+  }
+}
+
+/**
+ * Deskripsi lampiran sebagai teks perintah.
+ *
+ * Pesan yang isinya cuma PDF tidak punya teks. Kalau diteruskan kosong, agent
+ * melihat pesan kosong dan tidak tahu ada berkas yang bisa dibaca.
+ */
+function describeLampiran(message: import('../whatsapp/types.js').NormalizedMessage): string {
+  const nama = message.fileName ?? 'berkas'
+  return `[Lampiran: ${nama}${message.mimetype ? ` (${message.mimetype})` : ''}]`
+}
 
 /** Kemampuan aktif — sumber jawaban untuk "kamu bisa apa". */
 const CAPABILITIES: Array<{ name: string; description: string; status: string }> = [
@@ -71,6 +108,8 @@ export interface MessageHandlerDeps {
 }
 
 export class MessageHandler {
+  /** Lampiran terakhir per chat JID. */
+  private readonly lampiran = new Map<string, MediaPendek>()
   constructor(private readonly deps: MessageHandlerDeps) {}
 
   async registerTools(): Promise<void> {
@@ -92,6 +131,9 @@ export class MessageHandler {
     )
     this.deps.tools.registerAll(buildKnowledgeTools({ knowledge: this.deps.knowledge, documents: this.deps.documents }) as never)
     this.deps.tools.registerAll(
+      buildMediaTools({ whatsapp: this.deps.whatsapp, knowledge: this.deps.knowledge }) as never,
+    )
+    this.deps.tools.registerAll(
       buildDocumentTools({
         documents: this.deps.documents,
         identity: this.deps.identity,
@@ -100,6 +142,21 @@ export class MessageHandler {
       }) as never,
     )
     log.info({ tools: this.deps.tools.names().length }, 'tool terdaftar')
+  }
+
+  /**
+   * Ingat lampiran terakhir di satu percakapan.
+   *
+   * Dibatasi 50 percakapan supaya tidak tumbuh tanpa batas — percakapan yang
+   * sudah lama tidak mungkin masih punya lampiran aktif (media WhatsApp
+   * kedaluwarsa dalam hitungan menit).
+   */
+  lampiranIngat(chatJid: string, media: MediaPendek): void {
+    if (this.lampiran.size >= 50) {
+      const tertua = this.lampiran.keys().next()
+      if (!tertua.done) this.lampiran.delete(tertua.value)
+    }
+    this.lampiran.set(chatJid, media)
   }
 
   /** Titik masuk untuk setiap pesan masuk yang lolos filter. */
@@ -183,6 +240,14 @@ export class MessageHandler {
       ? await this.collectPermissions(resolved.identity.userId, organization.organizationId)
       : new Set<string>()
 
+    // Lampiran terakhir di percakapan ini, kalau ada.
+    //
+    // Disimpan di memori proses, bukan di database: media WhatsApp hanya
+    // tersedia singkat, dan menyimpan metadata lampiran ke database hanya
+    // menambah baris yang tidak pernah bisa dipakai ulang.
+    const media = ambilLampiran(message)
+    if (media) this.lampiranIngat(message.chatJid, media)
+
     const relevantSkills = this.deps.skills.select(message.text ?? '', {
       isGroup,
       allowedPermissions,
@@ -208,7 +273,11 @@ export class MessageHandler {
       timezone: organization.timezone,
       organizationName: organization.name,
       memberName: resolved.identity.displayName,
-      text: message.text ?? '',
+      // Pesan tanpa caption tetap punya teks: nama berkasnya. Tanpa ini,
+      // pesan yang isinya cuma lampiran akan terlihat seperti pesan kosong
+      // dan agent tidak tahu ada berkas yang bisa dibaca.
+      text: message.text?.trim() ? message.text : describeLampiran(message),
+      pendingMedia: media ?? this.lampiran.get(message.chatJid) ?? null,
       history,
       capabilities: CAPABILITIES.filter((cap) => cap.status === 'enabled').map((cap) => ({
         name: cap.name,

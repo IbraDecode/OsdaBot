@@ -100,6 +100,6 @@ Dan lewat percakapan:
 |---|---|
 | **Hanya PDF.** | DOCX dan gambar tidak diekstrak. |
 | **Tidak ada OCR.** | PDF hasil pindai/foto ditolak. Ini batas nyata: sistem tidak akan mengarang isi dokumen yang tidak bisa dibaca. |
-| **Hanya dokumen yang sudah dibuat sistem.** | PDF yang diunggah pengguna lewat chat **belum** bisa diunduh — `WhatsAppProvider` belum punya `downloadMedia`. Itu celah yang nyata. |
+| ~~Hanya dokumen yang sudah dibuat sistem~~ | **Sudah ditutup.** Lampiran dari chat bisa diunduh dengan `downloadMediaById` dan diekstrak. Lihat `docs/LAMPIRAN.md`. |
 | **Urutan teks bisa kacau** pada dokumen dua kolom. | Isi terbaca, urutan baris tidak dijamin benar. |
 | **Ekstraksi dipanggil langsung** di dalam tool. | PDF besar bisa membuat tool lambat. Untuk berkas besar, seharusnya lewat worker. |

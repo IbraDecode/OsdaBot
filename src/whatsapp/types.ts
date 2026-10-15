@@ -195,6 +195,15 @@ export interface WhatsAppProvider {
   getAllGroups(): Promise<NormalizedGroupMetadata[]>
 
   /**
+   * Unduh lampiran pesan berdasarkan id pesannya.
+   *
+   * `null` kalau pesan sudah tidak tersimpan, lampirannya hilang di sisi
+   * WhatsApp, atau ukurannya melebihi batas. Yang penting: mengembalikan
+   * `Buffer` kosong **tidak pernah** berarti "berkas kosong".
+   */
+  downloadMediaById(messageId: string): Promise<Buffer | null>
+
+  /**
    * Daftar grup yang diikuti akun ini, diringkas jadi JID + subjek.
    *
    * Hanya JID dan subjek yang dibutuhkan saat memindai grup yang belum

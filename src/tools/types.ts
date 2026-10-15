@@ -40,6 +40,21 @@ export interface ToolExecutionContext {
   timezone: string
   /** Layanan otorisasi. */
   authorization: AuthorizationService
+  /**
+   * Lampiran terakhir yang dikirim di percakapan ini.
+   *
+   * Disini — bukan sebagai parameter tool — supaya model tidak bisa meminta
+   * berkas dari percakapan lain. Isinya hanya metadata; unduhannya tetap lewat
+   * provider.
+   */
+  pendingMedia?: {
+    messageId: string
+    fileName: string | null
+    mimetype: string | null
+    type: string
+  } | null
+  /** Convenience: id lampiran terakhir, atau null. */
+  pendingMediaId?: string | null
 }
 
 /** Hasil tool yang seragam. */

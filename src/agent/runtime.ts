@@ -70,6 +70,19 @@ export interface AgentRequest {
   senderJid: string
   isGroup: boolean
   timezone: string
+  /**
+   * Lampiran yang menyertai pesan.
+   *
+   * Diteruskan ke `ToolExecutionContext` supaya tool tahu berkas mana yang
+   * dimaksud tanpa harus jadi parameter — model tidak boleh meminta berkas
+   * dari percakapan lain hanya dengan menyebut id-nya.
+   */
+  pendingMedia?: {
+    messageId: string
+    fileName: string | null
+    mimetype: string | null
+    type: string
+  } | null
   /** Nama organisasi untuk system prompt. */
   organizationName: string | null
   /** Nama anggota untuk system prompt. */
@@ -150,6 +163,8 @@ export class AgentRuntime {
       correlationId: request.correlationId,
       timezone: request.timezone,
       authorization: this.deps.authorization,
+      pendingMedia: request.pendingMedia ?? null,
+      pendingMediaId: request.pendingMedia?.messageId ?? null,
     }
 
     // Hanya tool dari skill yang relevan yang dikirim.

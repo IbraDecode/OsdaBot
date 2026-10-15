@@ -97,6 +97,12 @@ class FakeWhatsAppProvider implements WhatsAppProvider {
   }
   /** Grup yang "diikuti" bot tiruan. */
   joinedGroups: Array<{ jid: string; subject: string | null }> = []
+  /** Lampiran yang bisa diunduh, dikunci id pesannya. */
+  lampiran = new Map<string, Buffer>()
+
+  async downloadMediaById(messageId: string) {
+    return this.lampiran.get(messageId) ?? null
+  }
 
   async listJoinedGroups() {
     return this.joinedGroups
