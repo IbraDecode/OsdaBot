@@ -1,6 +1,6 @@
 ---
 name: answer-from-knowledge
-description: Menjawab pertanyaan tentang aturan, prosedur, dan keputusan organisasi dari dokumen resmi yang tersimpan, serta menyimpan dokumen baru ke knowledge base.
+description: Menjawab pertanyaan dari pengetahuan organisasi — menjawab pertanyaan tentang aturan, prosedur, dan keputusan dari dokumen resmi yang tersimpan, lalu menyimpan dokumen baru ke knowledge base.
 version: 1.0.0
 required_tools:
   - knowledge_search

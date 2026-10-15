@@ -54,6 +54,21 @@ const dummy = {
 
 ## Unit (465 test) + Integrasi (111 test) + Live (7 test)
 
+### `tests/integration/capability-audit.test.ts` (7 test) — **invarian**
+
+Yang diklaim harus benar-benar bisa dipakai:
+
+- Izin tanpa tool **tercatat dengan penjelasannya**; allowlist yang usang juga gagal.
+- Izin tanpa peran **tercatat sebagai operator** kalau memang begitu.
+- Kemampuan yang diklaim aktif **punya skill** — ini yang menangkap tool mati.
+- **Model database mati tercatat** — 17 model tidak dipakai kode, semuanya kini
+  tercatat beserta alasannya.
+
+> Tiga bug di audit-nya sendiri: membandingkan konstanta dengan nilai izin;
+> heuristik nama accessor Prisma salah (menganggap semua model mati); hanya
+> menangkap `prisma.` tapi lupa `tx.` di dalam `$transaction`. Audit yang salah
+> lebih buruk daripada tidak ada audit, karena ia hijau padahal masalahnya ada.
+
 ### `tests/integration/payments.test.ts` (24 test) — **kode uang**
 
 Semua fakta diambil dari dokumentasi resmi BaturPay. Ke database sungguhan.

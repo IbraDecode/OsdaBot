@@ -115,9 +115,9 @@ Setiap perintah **membaca kondisi nyata** dari database dan provider.
 
 | Yang diukur | Nilai |
 |---|---|
-| **Test total** | **583 lulus, 0 gagal** (3 skipped) |
+| **Test total** | **590 lulus, 0 gagal** (3 skipped) |
 | Unit | 457 lulus |
-| Integrasi | 119 lulus |
+| Integrasi | 126 lulus |
 | Live (opsional) | 7 lulus dengan `RUN_LIVE_TESTS=true` |
 | Tool terdaftar | 40 |
 | Skill termuat | 9 |
