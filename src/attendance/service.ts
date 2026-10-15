@@ -10,6 +10,8 @@
  */
 import { AttendanceStatus, type Prisma, type PrismaClient } from '@prisma/client'
 import type { RenderEntry, RenderOptions } from './renderer.js'
+import { canonicalizeName } from '../identity/name-normalizer.js'
+import { logger } from '../observability/logger.js'
 import {
   DEFAULT_TEMPLATE,
   detectFormatHints,
@@ -17,6 +19,8 @@ import {
   renderAttendanceList,
   toRenderEntries,
 } from './renderer.js'
+
+const log = logger.child({ module: 'attendance' })
 
 export interface AttendanceServiceDeps {
   prisma: PrismaClient
@@ -63,7 +67,9 @@ export class AttendanceError extends Error {
       | 'ENTRY_NOT_FOUND'
       | 'MEMBER_NOT_FOUND'
       | 'DUPLICATE_MEMBER'
-      | 'AMBIGUOUS_TARGET',
+      | 'AMBIGUOUS_TARGET'
+      | 'MEMBER_AMBIGUOUS'
+      | 'MEMBER_UNRESOLVED',
     message: string,
   ) {
     super(message)
@@ -210,6 +216,116 @@ export class AttendanceService {
   }
 
   /** Tambah anggota ke daftar. Idempoten: anggota sama tidak jadi dua entri. */
+  /**
+   * Isi daftar sekaligus dengan banyak anggota.
+   *
+   * Memakai satu panggilan, bukan satu per anggota. Untuk organisasi dengan
+   * puluhan anggota, memanggil tool satu-per-satu butuh puluhan putaran agent
+   * dan bisa kehabisan langkah di tengah jalan.
+   *
+   * Semua anggota yang disebut masuk dengan status `UNCONFIRMED` — tidak ada
+   * yang otomatis ditandai HADIR. Menandai hadir adalah keputusan manusia;
+   * sistem tidak boleh mengarang kehadiran.
+   */
+  async seedMembers(input: {
+    organizationId: string
+    attendanceEventId: string
+    /** Nama atau panggilan, seperti yang diucapkan di chat. */
+    names: string[]
+    /** Kalau true, semua anggota aktif ikut masuk. */
+    includeAll?: boolean
+  }): Promise<{
+    added: Array<{ memberId: string; fullName: string; className: string | null }>
+    notFound: string[]
+    ambiguous: string[]
+    totalActive: number
+  }> {
+    const members = await this.prisma.organizationMember.findMany({
+      where: { organizationId: input.organizationId, isActive: true },
+      select: { id: true, fullName: true, className: true, searchName: true },
+      orderBy: { fullName: 'asc' },
+    })
+
+    const aliases = await this.prisma.memberAlias.findMany({
+      where: { member: { organizationId: input.organizationId, isActive: true } },
+      select: { alias: true, memberId: true },
+    })
+
+    const existing = await this.prisma.attendanceEntry.findMany({
+      where: { attendanceEventId: input.attendanceEventId },
+      select: { memberId: true },
+    })
+    const sudahDiDaftar = new Set(existing.map((row) => row.memberId))
+
+    // Tanpa nama yang disebut, seluruh anggota aktif masuk.
+    const semuaDiambil = input.includeAll === true || input.names.length === 0
+
+    type Member = (typeof members)[number]
+    const terpilih: Array<{ kunci: string; cocok: Member[] }> = semuaDiambil
+      ? []
+      : input.names.map((raw) => {
+          const kunci = canonicalizeName(raw)
+          const cocok = members.filter((member) => {
+            if (member.searchName === kunci) return true
+            if (canonicalizeName(member.fullName) === kunci) return true
+            return aliases.some((a) => a.memberId === member.id && a.alias === kunci)
+          })
+          return { kunci, cocok }
+        })
+
+    const added: Array<{ memberId: string; fullName: string; className: string | null }> = []
+    const notFound: string[] = []
+    const ambiguous: string[] = []
+
+    if (semuaDiambil) {
+      for (const member of members) {
+        if (sudahDiDaftar.has(member.id)) continue
+        added.push({ memberId: member.id, fullName: member.fullName, className: member.className })
+      }
+    } else {
+      for (const { kunci, cocok } of terpilih) {
+        if (cocok.length === 0) {
+          notFound.push(kunci)
+          continue
+        }
+        if (cocok.length > 1) {
+          // Menebak yang mana berarti data kehadiran salah orang.
+          ambiguous.push(`${kunci} -> ${cocok.map((m) => m.fullName).join(' / ')}`)
+          continue
+        }
+        const member = cocok[0]!
+        if (sudahDiDaftar.has(member.id)) continue
+        added.push({ memberId: member.id, fullName: member.fullName, className: member.className })
+      }
+    }
+
+    // Urutan mengikuti daftar organisasi, bukan urutan disebut.
+    const urut = new Map(members.map((m, i) => [m.id, i]))
+    added.sort((a, b) => (urut.get(a.memberId) ?? 0) - (urut.get(b.memberId) ?? 0))
+
+    if (added.length > 0) {
+      await this.prisma.attendanceEntry.createMany({
+        data: added.map((member, index) => ({
+          attendanceEventId: input.attendanceEventId,
+          memberId: member.memberId,
+          displayName: member.fullName,
+          className: member.className,
+          // Tidak ada yang otomatis HADIR — kehadiran adalah keputusan manusia.
+          status: 'UNCONFIRMED' as const,
+          sortOrder: index,
+        })),
+        skipDuplicates: true,
+      })
+    }
+
+    log.info(
+      { organizationId: input.organizationId, added: added.length, notFound: notFound.length, ambiguous: ambiguous.length },
+      'anggota ditambahkan ke daftar',
+    )
+
+    return { added, notFound, ambiguous, totalActive: members.length }
+  }
+
   async addMember(input: AddMemberInput) {
     // Validasi anggota benar-benar milik organisasi.
     const member = await this.prisma.organizationMember.findFirst({

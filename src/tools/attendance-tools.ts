@@ -60,8 +60,7 @@ export function buildAttendanceTools(deps: AttendanceToolsDeps): Array<ToolDefin
           attendanceEventId: event.id,
           title: event.title,
           date: event.eventDate.toISOString().slice(0, 10),
-          location: event.location,
-          totalEntries: event._count.entries,
+            totalEntries: event._count.entries,
         })),
       }
     },
@@ -91,7 +90,6 @@ export function buildAttendanceTools(deps: AttendanceToolsDeps): Array<ToolDefin
         attendanceEventId: event.id,
         title: event.title,
         date: event.eventDate.toISOString().slice(0, 10),
-        location: event.location,
         /** Teks siap kirim — renderer memakai format yang sudah disimpan. */
         rendered: await attendance.renderList(organizationId, event.id),
         entries: renderEntries.map((entry) => ({
@@ -109,7 +107,14 @@ export function buildAttendanceTools(deps: AttendanceToolsDeps): Array<ToolDefin
   }
 
   const createList: ToolDefinition<
-    { title: string; eventDate?: string; location?: string | null; markdown?: string | null },
+    {
+      title: string
+      eventDate?: string
+      location?: string | null
+      markdown?: string | null
+      includeAllMembers?: boolean
+      memberNames?: string[]
+    },
     unknown
   > = {
     name: 'attendance_create',
@@ -136,6 +141,21 @@ export function buildAttendanceTools(deps: AttendanceToolsDeps): Array<ToolDefin
         .max(20_000)
         .nullish()
         .describe('Isi markdown asli dari pengguna bila ada. Dipakai sebagai cetakan format.'),
+      includeAllMembers: z
+        .boolean()
+        .optional()
+        .describe(
+          'Kalau true, semua anggota aktif ikut masuk ke daftar dengan status BELUM KONFIRMASI. ' +
+            'Pakai true saat pengguna minta "daftar hadir untuk semua anggota".',
+        ),
+      memberNames: z
+        .array(z.string().max(120))
+        .max(500)
+        .optional()
+        .describe(
+          'Nama anggota yang mau dimasukkan, sesuai yang disebut pengguna. ' +
+            'Boleh nama panggilan atau alias. Semua masuk dengan status BELUM KONFIRMASI — jangan menandai hadir sendiri.',
+        ),
     }) as never,
     requiredPermissions: [PERMISSIONS.ATTENDANCE_CREATE],
     riskLevel: 'MEDIUM',
@@ -151,13 +171,46 @@ export function buildAttendanceTools(deps: AttendanceToolsDeps): Array<ToolDefin
         location: input.location ?? null,
       })
 
+      // Isi daftar sekaligus, bukan satu per satu.
+      //
+      // Menambahkan anggota lewat panggilan tool terpisah butuh satu putaran
+      // agent per orang. Untuk organisasi dengan puluhan anggota, itu
+      // kehabisan langkah di tengah jalan dan daftar tetap kosong.
+      const mauSemua = input.includeAllMembers === true
+      const namaDisebut = input.memberNames ?? []
+      let hasilIsi: Awaited<ReturnType<typeof attendance.seedMembers>> | null = null
+
+      if (mauSemua || namaDisebut.length > 0) {
+        hasilIsi = await attendance.seedMembers({
+          organizationId,
+          attendanceEventId: event.id,
+          names: namaDisebut,
+          includeAll: mauSemua,
+        })
+      }
+
       if (!created) {
         return {
           attendanceEventId: event.id,
           created: false,
-          message:
-            'Daftar untuk tanggal itu sudah ada, jadi aku pakai yang tadi. Kalau mau bikin yang terpisah, sebutkan waktunya.',
+          message: hasilIsi
+            ? `Daftar untuk tanggal itu sudah ada, jadi aku pakai yang tadi dan menambahkan ${hasilIsi.added.length} anggota.`
+            : 'Daftar untuk tanggal itu sudah ada, jadi aku pakai yang tadi. Kalau mau bikin yang terpisah, sebutkan waktunya.',
         }
+      }
+
+      const catatan: string[] = []
+      if (hasilIsi) {
+        catatan.push(`${hasilIsi.added.length} anggota masuk dengan status BELUM KONFIRMASI.`)
+        if (hasilIsi.notFound.length > 0) {
+          catatan.push(`Tidak ditemukan: ${hasilIsi.notFound.join(', ')}.`)
+        }
+        if (hasilIsi.ambiguous.length > 0) {
+          // Menebak yang mana berarti data kehadiran salah orang.
+          catatan.push(`Nama ambigu (tidak ditambahkan): ${hasilIsi.ambiguous.join('; ')}.`)
+        }
+      } else {
+        catatan.push('Belum ada anggota di dalamnya.')
       }
 
       return {
@@ -165,7 +218,11 @@ export function buildAttendanceTools(deps: AttendanceToolsDeps): Array<ToolDefin
         created: true,
         title: event.title,
         date: event.eventDate.toISOString().slice(0, 10),
-        message: `Daftar "${event.title}" sudah dibuat. Belum ada anggota di dalamnya.`,
+        memberCount: hasilIsi?.added.length ?? 0,
+        added: hasilIsi?.added.map((member) => member.fullName) ?? [],
+        notFound: hasilIsi?.notFound ?? [],
+        ambiguous: hasilIsi?.ambiguous ?? [],
+        message: `Daftar "${event.title}" sudah dibuat. ${catatan.join(' ')}`,
       }
     },
   }
