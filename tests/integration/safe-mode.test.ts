@@ -115,9 +115,9 @@ describe('menyimpan dan membaca flag', () => {
     // aman dari terminal lain. Tool call berikutnya di percakapan itu harus
     // sudah tertahan.
     //
-    // Kalau cache baru berubah setelah commit ke database, ada jendela
-    // beberapa detik di mana tombol darurat diam-diam tidak berefek — dan
-    // jendela itulah yang jadi insiden.
+    // Test di bawah ("selama penulisan ke database") menguji balapan yang
+    // sebenarnya. Yang ini cuma urutan basics: setelah `set()` selesai,
+    // tool call berikutnya harus tertahan.
     const registry = registryDenganGerbang()
 
     await registry.execute('uji_hitung', {}, konteks)
@@ -135,6 +135,59 @@ describe('menyimpan dan membaca flag', () => {
       // membuang waktu dan token.
       expect(hasil.error.retryable).toBe(false)
     }
+  })
+
+  it('BUG REGRESSION: mode aman berlaku SELAMA penulisan ke database', async () => {
+    // Ini balapan yang sebenarnya, dan test di atas tidak menyentuhnya.
+    //
+    // Penulisan ke database butuh waktu — beberapa milidetik dalam kondisi
+    // normal, bisa ratusan saat lambat. Kalau cache baru diperbarui SETELAH
+    // commit, setiap tool call selama jendela itu masih melihat "normal" dan
+    // tool tetap jalan.
+    //
+    // Jendelanya pendek, tapi justru itu masalahnya: yang tidak terlihat
+    // tidak pernah dilaporkan.
+    //
+    // Test ini menahan penulisan di tengah jalan lalu bertanya ke layanannya
+    // selagi penulisan itu belum selesai.
+    let lepas: () => void = () => {}
+    const tertahan = new Promise<void>((resolve) => {
+      lepas = resolve
+    })
+
+    const systemFlag = prisma.systemFlag
+    const proks = new Proxy(prisma, {
+      get(target, prop, receiver) {
+        if (prop === 'systemFlag') {
+          return {
+            upsert: async (args: unknown) => {
+              await tertahan
+              return systemFlag.upsert(args as never)
+            },
+            // Sisanya diteruskan ke klien sungguhan — kalau tidak, `snapshot()`
+            // akan gagal dan test jadi menguji hal yang lain.
+            findUnique: (args: unknown) => systemFlag.findUnique(args as never),
+            create: (args: unknown) => systemFlag.create(args as never),
+            deleteMany: (args: unknown) => systemFlag.deleteMany(args as never),
+          }
+        }
+        return Reflect.get(target, prop, receiver)
+      },
+    })
+
+    const lambat = new SafeModeService(proks as never)
+
+    // Nyalakan, JANGAN di-await: penulisan database akan tertahan di sana.
+    const menyalakan = lambat.set({ enabled: true })
+    await Promise.resolve()
+
+    // Pertanyaan ini jatuh DI TENGAH penulisan. Kalau cache baru berubah
+    // setelah commit, jawabannya masih "tidak aktif" — dan tool akan jalan.
+    expect(await lambat.aktif()).toBe(true)
+
+    lepas()
+    await menyalakan
+    expect(toolDipanggil).toBe(0)
   })
 })
 

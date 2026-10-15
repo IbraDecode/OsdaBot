@@ -1,6 +1,6 @@
 # Audit Kemampuan
 
-Status: **IMPLEMENTED** · **TESTED** (630 test lulus, 0 gagal)
+Status: **IMPLEMENTED** · **TESTED** (647 test lulus, 0 gagal)
 
 `tests/integration/capability-audit.test.ts`
 
@@ -150,7 +150,7 @@ Yang **tidak** bisa diselesaikan dengan menulis dokumentasi:
 | `ActiveTask` belum dipakai | Menyusun kebutuhan lewat percakapan belum ada. | Utang |
 | `WorkflowRun` belum dipakai | Tidak ada alur kerja otomatis. | Utang |
 | Monitoring belum ada | Tidak ada deteksi untuk percakapan yang memburuk. | Utang |
-| `system.safe_mode` tidak ada mekanismenya | Tidak ada tombol darurat saat ada gangguan. | Utang |
+| `system.safe_mode` tidak ada mekanismenya | Tidak ada tombol darurat saat ada gangguan. | **Dibayar** |
 | `IdempotencyKey` belum dipakai | Nomor dokumen bisa bentrok saat bersamaan. | **Dibayar** |
 | Tautan grup hanya CLI | Admin harus ke terminal; bot yang belum tertaut diam. | **Dibayar** |
 

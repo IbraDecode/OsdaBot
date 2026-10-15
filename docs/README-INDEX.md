@@ -20,6 +20,7 @@ diperbarui di perubahan yang sama.
 | [PROVISIONING.md](./PROVISIONING.md) | Cara menyiapkan organisasi nyata + linking nomor admin |
 | [PERSETUJUAN.md](./PERSETUJUAN.md) | Approval engine, alur persetujuan, garis keamanannya |
 | [KEAMANAN.md](./KEAMANAN.md) | RBAC, otorisasi, batas keamanan |
+| [MODE-AMAN.md](./MODE-AMAN.md) | **Tombol darurat operasional — apa yang berhenti, apa yang tetap jalan** |
 | [DATABASE.md](./DATABASE.md) | Skema, aturan, migrasi |
 | [PEMBAYARAN.md](./PEMBAYARAN.md) | Integrasi BaturPay & keamanan webhook |
 | [BAYAR.md](./BAYAR.md) | Temuan audit kode uang BaturPay |
