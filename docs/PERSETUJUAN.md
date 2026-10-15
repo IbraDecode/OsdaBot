@@ -165,7 +165,35 @@ disetujui.
 
 ---
 
-## 8. Batasan saat ini
+## 8. Verifikasi end-to-end
+
+`tests/integration/approval-flow.test.ts` (8 test) menguji jalur yang
+sebenarnya dilewati pengguna, bukan hanya mesinnya:
+
+- Tool yang butuh persetujuan **tidak jalan** sebelum disetujui — pesan
+  asli tidak pernah terkirim ke penerima.
+- `"iya"` dari pemohon → approve → pesan terkirim → status `APPROVED`.
+- `"iya"` dari **orang lain** → reject, pesan tidak terkirim.
+- `"iya"` dari **chat lain** → reject.
+- `"iya"` **diulang** → hanya dieksekusi sekali.
+- `"batal"` → `REJECTED`, tidak eksekusi.
+- Kalimat panjang berisi kata persetujuan → diteruskan ke agent.
+- Penolakan tercatat di `AuditLog` dengan `APPROVAL_PENDING`.
+
+### Satu kegagalan yang perlu dicatat
+
+Versi pertama test ini memakai UUID aktor fiktif, dan **lima dari delapan test
+gagal**. Bukan karena logikanya salah, tapi karena RBAC menolak di lapisan izin
+**sebelum** lapisan persetujuan — jadi tidak ada yang pernah sampai ke alur
+yang mau diuji.
+
+Uji jalur yang benar butuh aktor yang benar-benar punya izin. Pelajaran: saat
+menguji lapisan keamanan, lapisan yang lebih luar bisa menutupi lapisan yang
+sedang diuji.
+
+---
+
+## 9. Batasan saat ini
 
 - **Belum bisa diuji end-to-end di WhatsApp nyata** — pairing WhatsApp masih
   terblokir `429 rate-overlimit`. Alur sudah terverifikasi langsung terhadap

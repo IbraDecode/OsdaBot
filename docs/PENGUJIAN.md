@@ -52,7 +52,7 @@ const dummy = {
 }
 ```
 
-## Unit (348 test)
+## Unit (356 test) + Integrasi (33 test)
 
 ### `tests/unit/jid.test.ts`
 
