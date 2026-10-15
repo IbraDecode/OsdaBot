@@ -52,7 +52,27 @@ const dummy = {
 }
 ```
 
-## Unit (428 test) + Integrasi (82 test) + Live (7 test)
+## Unit (450 test) + Integrasi (83 test) + Live (7 test)
+
+### `tests/unit/knowledge.test.ts` (23 test)
+
+Knowledge engine — kemampuan yang paling rawan mengarang:
+
+- Potongan punya offset yang benar (isi asli = isi potongan).
+- **Tidak memotong di tengah kata.**
+- **BUG REGRESSION: pertanyaan NATURAL tetap menemukan dokumennya.**
+  `websearch_to_tsquery` memakai AND, jadi "berapa iuran bulanan" gagal
+  karena "berapa" tidak ada di dokumen — padahal dokumen itu persis yang dicari.
+- **Pertanyaan yang benar-benar tidak ada mengembalikan kosong.** Sistem tidak
+  boleh menjawab dengan dokumen yang tidak berhubungan; itu mengarang sumber.
+- **Dokumen kedaluwarsa tidak dipakai** — menjawab dengan aturan lama sama
+  berbahaya dengan menjawab tanpa sumber.
+- **Dokumen organisasi lain tidak bisa ditemukan.**
+- **Query kosong tidak membuat error** (`''::tsquery` itu error PostgreSQL).
+- **Aman dari injeksi SQL** — termasuk `'; DROP TABLE ...; --`.
+- Pencarian cadangan substring **menghormati filter tipe** (regresi).
+- Arsip dikeluarkan dari pencarian, tapi dokumen **tidak dihapus** — riwayat
+  keputusan tetap perlu.
 
 ### `tests/unit/jid.test.ts`
 
