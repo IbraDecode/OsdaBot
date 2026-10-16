@@ -419,11 +419,17 @@ describe('ToolApprovalExecutor', () => {
     // dijalankan, approval yang sebenarnya menunggu tertinggal menggantung, dan
     // pengguna diberi "sudah dijalankan sebelumnya" padahal tidak ada yang
     // dijalankan.
-    let whereDipakai: Record<string, unknown> = {}
+    // Semua `where` dicatat, BUKAN hanya yang terakhir.
+    //
+    // Percobaan pertama menyimpan `where` terakhir saja — dan pencarian
+    // fallback menimpanya, sehingga test memeriksa filter fallback yang memang
+    // selalu punya `executedAt`. Test itu lulus walau cabang yang diuji sudah
+    // dirusak.
+    const semuaWhere: Array<Record<string, unknown>> = []
     const prismaPalsu = {
       approval: {
         findFirst: async (args: { where: Record<string, unknown> }) => {
-          whereDipakai = args.where
+          semuaWhere.push(args.where)
           return null
         },
         update: async () => ({}),
@@ -443,10 +449,12 @@ describe('ToolApprovalExecutor', () => {
       organizationId: 'org-1',
     })
 
+    const perCorrelationId = semuaWhere.find((w) => w.correlationId === 'corr-1')
+    expect(perCorrelationId, 'cabang correlationId tidak dijalankan').toBeTruthy()
     expect(
-      whereDipakai.executedAt,
+      perCorrelationId!.executedAt,
       'pencarian per-correlationId tidak menyaring executedAt',
     ).toBeNull()
-    expect(whereDipakai.organizationId, 'pencarian tidak dibatasi organisasi').toBe('org-1')
+    expect(perCorrelationId!.organizationId, 'pencarian tidak dibatasi organisasi').toBe('org-1')
   })
 })

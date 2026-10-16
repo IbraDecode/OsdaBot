@@ -458,43 +458,87 @@ describe('balasan persetujuan yang gagal terkirim', () => {
     return { engine, terkirim, state }
   }
 
-  it('BUG REGRESSION: hasil pengiriman yang gagal TIDAK dilaporkan sebagai sukses', async () => {
-    // Yang diuji: `say()` benar-benar membaca `result.status`.
-    //
-    // Kalau tidak, kegagalan diam-diam. Test ini memanggil jalur yang sama
-    // dengan kegagalan nyata di lapangan: `PaymentBusyError` jadi `ok: false`,
-    // lalu pesannya dikirim — dan gagal terkirim tanpa ada yang tahu.
-    const { engine, terkirim } = buatEngine('failed')
-
-    await engine.tryHandleReply({
-      text: 'iya',
-      chatJid: '628@s.whatsapp.net',
-      actorUserId: '25bc6013-7954-4331-bfce-e63c34fc1021',
+  function buatEngineDenganRiwayat(status: 'sent' | 'failed' | 'unknown') {
+    const { prisma } = buatPrismaPalsu({
+      approval: {
+        id: 'apv-1',
+        actionType: 'payment_create_charge',
+        payloadHash: hashPayload({ x: 1 }),
+        payload: { x: 1 },
+        correlationId: null,
+      },
+      updateManyCount: 1,
     })
 
-    // Pesan tetap dicoba kirim — dan isinya harus jujur.
-    const pesanGagal = terkirim.find((m) => m.text.includes('Sudah ada permintaan lain'))
-    expect(pesanGagal, 'pesan kegagalan tidak pernah dikirim').toBeTruthy()
+    const terkirim: Array<{ to: string; text: string }> = []
+    const dicatat: Array<Record<string, unknown>> = []
+
+    const prismaLengkap = {
+      ...prisma,
+      conversation: {
+        findFirst: async () => ({ id: 'percakapan-1' }),
+      },
+      message: {
+        create: async ({ data }: { data: Record<string, unknown> }) => {
+          dicatat.push(data)
+          return {}
+        },
+      },
+    }
+
+    const engine = new ApprovalEngine({
+      prisma: prismaLengkap as never,
+      whatsapp: {
+        sendText: async (to: string, text: string) => {
+          terkirim.push({ to, text })
+          return { status, providerMessageId: 'x' } as never
+        },
+      } as never,
+      executor: {
+        executeApproved: async () => ({ ok: false, summary: 'Sudah ada permintaan lain yang menunggu.' }),
+      },
+    })
+
+    return { engine, terkirim, dicatat }
+  }
+
+  const AKTOR = '25bc6013-7954-4331-bfce-e63c34fc1021'
+
+  it('BUG REGRESSION: hasil approval yang terkirim MASUK riwayat', async () => {
+    // Kalau tidak, riwayat yang dibaca agent pada pesan berikutnya berakhir di
+    // "iya" tanpa balasan — dan model tidak punya apa pun selain mengarang. Itu
+    // asal kalimat "masih ditahan oleh sistem persetujuan", yang tidak ada di
+    // mana pun dalam kode.
+    const { engine, dicatat } = buatEngineDenganRiwayat('sent')
+
+    await engine.tryHandleReply({ text: 'iya', chatJid: '628@s.whatsapp.net', actorUserId: AKTOR })
+
+    expect(
+      dicatat,
+      'pesan hasil persetujuan tidak masuk riwayat — agent berikutnya tidak akan tahu apa yang terjadi',
+    ).not.toHaveLength(0)
+
+    const teks = dicatat.map((d) => String(d.text ?? '')).join('\n')
+    expect(teks, 'riwayat tidak memuat hasil eksekusi').toContain('Sudah ada permintaan lain')
+    expect(dicatat[0]!.senderJid).toBe('me')
   })
 
-  it('BUG REGRESSION: pesan hasil approval masuk riwayat, bukan hilang', async () => {
-    // Kalau tidak disimpan ke `Message`, riwayat yang dibaca agent pada pesan
-    // berikutnya berakhir di "iya" tanpa balasan — dan model tidak punya apa pun
-    // selain mengarang. Itu asal kalimat "masih ditahan oleh sistem persetujuan".
-    //
-    // Disimpan lewat `prisma.message.create`; di sini `prismaPalsu` tidak punya
-    // `message`, jadi `catatPesan` harus gagal dengan TENANG — tidak melempar,
-    // dan tidak menggagalkan alur persetujuan.
-    const { engine } = buatEngine('sent')
+  it('BUG REGRESSION: yang GAGAL terkirim TIDAK ditulis ke riwayat', async () => {
+    // Menulis pesan yang gagal terkirim membuat riwayat berbohong — agent akan
+    // "membaca" jawaban yang tidak pernah dibaca pengguna.
+    const { engine, dicatat, terkirim } = buatEngineDenganRiwayat('failed')
 
-    const hasil = await engine.tryHandleReply({
-      text: 'iya',
-      chatJid: '628@s.whatsapp.net',
-      actorUserId: '25bc6013-7954-4331-bfce-e63c34fc1021',
-    })
+    await engine.tryHandleReply({ text: 'iya', chatJid: '628@s.whatsapp.net', actorUserId: AKTOR })
 
-    // Kegagalan menulis riwayat tidak boleh menggagalkan persetujuan itu sendiri.
-    expect(hasil).toBe('approve')
+    // Pesan tetap DICOBA kirim — kegagalannya bukan alasan untuk diam.
+    expect(
+      terkirim.some((m) => m.text.includes('Sudah ada permintaan lain')),
+      'pesan kegagalan tidak pernah dikirim',
+    ).toBe(true)
+    expect(
+      dicatat,
+      'pesan yang gagal terkirim ditulis ke riwayat — riwayat jadi berbohong',
+    ).toHaveLength(0)
   })
 })
 

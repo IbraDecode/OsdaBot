@@ -205,21 +205,30 @@ describe('gate izin skill tidak boleh membuang kemampuan', () => {
   it('BUG REGRESSION: skill tetap terkirim kalau aktor punya SATU izin yang cukup', async () => {
     const registry = await muatSemua()
 
-    const skill = registry
-      .list()
-      .find((s) => s.metadata.name === 'manage-finance')
-    expect(skill, 'skill manage-finance tidak termuat').toBeTruthy()
+    // Harus skill yang deklarasikan LEBIH dari satu izin.
+    //
+    // Percobaan pertama memakai `manage-finance`, yang hanya mendeklarasikan
+    // `finance.read` — jadi `every` juga lulus, dan test tidak membedakan
+    // apa pun. Itu test yang berbohong.
+    const skill = registry.list().find((s) => s.metadata.name === 'manage-task')
+    expect(skill, 'skill manage-task tidak termuat').toBeTruthy()
+    expect(
+      skill!.metadata.requiredPermissions.length,
+      'test ini butuh skill dengan lebih dari satu izin deklarasi',
+    ).toBeGreaterThan(1)
 
-    // Bendahara baca saja: punya `finance.read`, tidak punya `finance.create`.
-    const hasil = registry.select('daftar tagihan kas', {
+    // Aktor punya SATU izin saja dari beberapa yang dideklarasikan.
+    const hasil = registry.select('daftar tugas', {
       isGroup: false,
-      allowedPermissions: new Set(['finance.read']),
+      allowedPermissions: new Set(['tasks.read']),
     })
 
-    // Dulu skill ini hilang total di sini — dan bersama semua tool-nya.
+    // Dengan `every`, skill ini hilang total — dan bersama seluruh tool-nya.
+    // Padahal `task_list` sendiri butuh `tasks.read` dan TIDAK butuh izin lain.
+    // Aktor yang bisa membaca tugas kehilangan kemampuan membaca tugas.
     expect(
-      hasil.some((s) => s.metadata.name === 'manage-finance'),
-      'bendahara baca-saja kehilangan seluruh skill keuangan',
+      hasil.some((s) => s.metadata.name === 'manage-task'),
+      'aktor dengan satu izin yang cukup kehilangan seluruh skill',
     ).toBe(true)
   })
 

@@ -367,23 +367,29 @@ export class ApprovalEngine implements ApprovalBroker {
       terkirim = false
     }
 
-    // Tetap disimpan walau gagal terkirim: menuntuk why bot yang menjawab
-    // berikutnya bisa tahu bahwa ada pesan yang sudah dicoba kirim.
-    if (terkirim || text.trim() !== '') await this.catatPesan(chatJid, text)
+    // Hanya kalau benar-benar sampai ke pengguna.
+    //
+    // Menyimpan pesan yang gagal terkirim membuat riwayat berbohong: agent
+    // berikutnya akan "membaca" jawaban yang tidak pernah dibaca pengguna.
+    if (terkirim) await this.catatPesan(chatJid, text)
   }
 
   /** Simpan pesan sistem ke riwayat percakapan. Gagal menulis tidak boleh fatal. */
   private async catatPesan(chatJid: string, text: string): Promise<void> {
     try {
-      const { prisma } = await import('../database/client.js')
-      const percakapan = await prisma.conversation.findFirst({
+      // Pakai `this.deps.prisma`, bukan mengimpor client sendiri.
+      //
+      // Versi lama mengimpor `../database/client.js` langsung. Itu memutus
+      // injeksi dependensi: test tidak bisa mengujinya, dan secara diam-diam
+      // membuat modul ini tidak bisa dipakai dengan database lain.
+      const percakapan = await this.deps.prisma.conversation.findFirst({
         where: { chatJid },
         select: { id: true },
         orderBy: { lastMessageAt: 'desc' },
       })
       if (!percakapan) return
 
-      await prisma.message.create({
+      await this.deps.prisma.message.create({
         data: {
           conversationId: percakapan.id,
           dedupeKey: `out:approval:${randomUUID()}`,
