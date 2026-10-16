@@ -258,9 +258,16 @@ describe('aturan per organisasi', () => {
     const denganBawaan = await service().periksa(ORG)
     expect(denganBawaan.sinyalBaru.filter((s) => s.jenis === 'TOOL_FAILURE_REPEAT')).toHaveLength(1)
 
-    await bersihkan()
+    // Hanya sinyal dan konfigurasi yang dibersihkan — **data kegagalannya
+    // dibiarkan**.
+    //
+    // Versi pertama memanggil `bersihkan()` yang juga menghapus
+    // `ToolExecution`, jadi paruh kedua tidak punya satu pun kegagalan untuk
+    // diamati. Nol kegagalan menghasilkan nol sinyal pada ambang apa pun, jadi
+    // test-nya lulus hampa — termasuk ketika pembacaan konfigurasi sengaja
+    // dimatikan.
+    await prisma.organizationSignal.deleteMany({ where: { organizationId: ORG } })
 
-    // Dengan ambang 10 untuk organisasi yang sama, bukan.
     await service().konfigurasi({
       organizationId: ORG,
       name: 'ambang tinggi',
@@ -268,7 +275,13 @@ describe('aturan per organisasi', () => {
     })
 
     const denganKonfigurasi = await service().periksa(ORG)
-    expect(denganKonfigurasi.sinyalBaru.filter((s) => s.jenis === 'TOOL_FAILURE_REPEAT')).toHaveLength(0)
+    expect(
+      denganKonfigurasi.sinyalBaru.filter((s) => s.jenis === 'TOOL_FAILURE_REPEAT'),
+    ).toHaveLength(0)
+
+    // Dan untuk memastikan nol itu memang karena ambangnya, bukan karena
+    // kebetulan tidak ada data: jumlah kegagalannya masih ada.
+    expect(await prisma.toolExecution.count({ where: { correlationId: { startsWith: TANDA } } })).toBe(4)
   })
 
   it('BUG REGRESSION: konfigurasi TIDAK berlaku ke organisasi lain', async () => {
