@@ -777,6 +777,55 @@ register('run:show', 'Detail satu jalan agent beserta langkah-langkahnya', async
 })
 
 // ---------------------------------------------------------------------------
+// Retensi data
+// ---------------------------------------------------------------------------
+
+register('retention:status', 'Kebijakan retensi + berapa baris yang akan dihapus', async () => {
+  const { RetentionService, KEBIJAKAN } = await import('../system/retention.js')
+  const service = new RetentionService(prisma)
+  const hasil = await service.perkiraan()
+
+  const lines = KEBIJAKAN.map(
+    (k) => `${k.tabel.padEnd(16)} ${String(k.hari).padStart(4)} hari  ${'·'.repeat(2)} ${hasil.perTabel.find((p) => p.tabel === k.tabel)?.jumlah ?? 0} baris`,
+  )
+
+  box('OSDABOT — RETENSI', [
+    ...lines,
+    '',
+    `Total akan dihapus : ${hasil.perTabel.reduce((n, p) => n + p.jumlah, 0)} baris`,
+    `Data bisnis        : ${hasil.dilewati.length} tabel TIDAK tersentuh`,
+  ])
+  console.log('')
+  console.log('  Jalankan dengan: pnpm osda retention:run --dry-run  (hitung saja)')
+  console.log('                  pnpm osda retention:run             (hapus)')
+  console.log('')
+  await prisma.$disconnect()
+})
+
+register('retention:run', 'Hapus baris yang melewati kebijakan retensi', async () => {
+  const { RetentionService } = await import('../system/retention.js')
+  const args = parseArgs(process.argv.slice(3))
+  const dryRun = args['dry-run'] !== undefined
+
+  const service = new RetentionService(prisma)
+  const hasil = dryRun ? await service.perkiraan() : await service.jalankan()
+
+  console.log('')
+  for (const p of hasil.perTabel) {
+    const tanda = p.kenaBatas ? ' (batas siklus tercapai, sisanya belum)' : ''
+    console.log(
+      `  ${p.tabel.padEnd(16)} ${String(p.jumlah).padStart(6)} baris${tanda}` +
+        (dryRun ? '' : ' dihapus'),
+    )
+  }
+  console.log('')
+  console.log(dryRun ? '  Hitsung saja — tidak ada yang dihapus.' : `  Total dihapus: ${hasil.totalDihapus} baris`)
+  console.log(`  ${hasil.dilewati.length} tabel data bisnis tidak tersentuh.`)
+  console.log('')
+  await prisma.$disconnect()
+})
+
+// ---------------------------------------------------------------------------
 // Mode aman — tombol darurat
 // ---------------------------------------------------------------------------
 

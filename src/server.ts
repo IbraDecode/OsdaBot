@@ -204,6 +204,25 @@ export async function runReadinessChecks(app: Application): Promise<ReadinessChe
   checks.push({ name: 'tools', ok: app.tools.names().length > 0, detail: `${app.tools.names().length} tool` })
   checks.push({ name: 'skills', ok: app.skills.size() >= 0, detail: `${app.skills.size()} skill` })
 
+  // Mode aman dilaporkan sebagai KEGAGALAN readiness.
+  //
+  // Ini bukan sekadar informasi. `/ready` ada supaya sistem pemantau, load
+  // balancer, atau orkestrator tahu bot ini sedang tidak melayani — dan saat
+  // mode aman dinyalakan, bot memang tidak melayani. Operator yang sengaja
+  // menahan bot **ingin** melihat ini muncul.
+  //
+  // Yang tidak boleh terjadi: mode aman menyala diam-diam dan tidak ada
+  // satu pun tanda di luar log terminal yang sedang tidak dibaca siapa pun.
+  const safeMode = await app.safeMode.snapshot()
+  checks.push({
+    name: 'safe_mode',
+    ok: !safeMode.enabled,
+    detail: safeMode.enabled
+      ? `AKTIF sejak ${safeMode.since?.toISOString() ?? 'tidak diketahui'}` +
+        (safeMode.reason ? ` — ${safeMode.reason}` : '')
+      : 'mati',
+  })
+
   return checks
 }
 

@@ -15,6 +15,7 @@ import { GroupLinkService } from './groups/service.js'
 import { TaskService } from './tasks/service.js'
 import { SafeModeService } from './system/safe-mode.js'
 import { AgentRunRecorder } from './agent/run-recorder.js'
+import { RetentionService } from './system/retention.js'
 import { DocumentService, LocalStorageDriver } from './documents/service.js'
 import { KnowledgeService } from './knowledge/service.js'
 import { BaturPayAdapter } from './payments/baturpay.js'
@@ -210,6 +211,29 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<Applica
   if (options.startWorkers !== false) {
     reminderWorker.start()
     outbox.start()
+
+    // Pembersihan retensi harian.
+    //
+    // Dijalankan sekali saat boot, lalu setiap 6 jam. Tidak perlu sering:
+    // kebijakan retensi berdimensi hari, jadi seberapa cepat jalannya
+    // menghapus lebih banyak.
+    //
+    // `unref()` supaya timer ini tidak menahan proses keluar — kalau CLI
+    // memakai bootstrap, prosesnya harus bisa selesai.
+    const retention = new RetentionService(prisma)
+    const bersihkan = async () => {
+      try {
+        const hasil = await retention.jalankan()
+        if (hasil.totalDihapus > 0) {
+          log.info({ total: hasil.totalDihapus }, 'retensi: baris lama dihapus')
+        }
+      } catch (error) {
+        log.error({ err: error }, 'retensi gagal')
+      }
+    }
+    const retentionTimer = setInterval(() => void bersihkan(), 6 * 60 * 60 * 1000)
+    retentionTimer.unref()
+    void bersihkan()
 
     // Event yang tersisa di SENDING berarti proses sebelumnya mati saat
     // mengirim. Hasilnya tidak diketahui — dipindahkan ke UNKNOWN supaya
