@@ -40,11 +40,79 @@ let app: Awaited<ReturnType<typeof bootstrap>>
 /** Prefix penanda baris uji, supaya pembersihan tidak menyapu data asli. */
 const PREFIX = 'KONEKSI-DATA'
 
+/** Anggota yang sengaja ditautkan ke identitas terverifikasi. */
+let anggotaTerverifikasi: { id: string; fullName: string } | null = null
+let identitasUji: { id: string } | null = null
+/** Tagihan yang menempel ke anggota — dipakai untuk menguji `payment_list`. */
+let tagihanAnggotaId = ''
+let pembayaranAnggotaOrderId = ''
+
 beforeAll(async () => {
   app = await bootstrap()
+
+  // ── Fixture: anggota dengan identitas TERVERIFIKASI ────────────────────────
+  //
+  // Tanpa ini, `organization_list_members` tidak punya satu pun baris
+  // `whatsappVerified: true` di organisasi uji, dan testnya lulus hampa —
+  // asserts apa pun soal nomor WhatsApp akan benar tanpa pernah mengujinya.
+  const anggota = await prisma.organizationMember.findFirst({
+    where: { organizationId: ORG, isActive: true },
+    select: { id: true, fullName: true },
+  })
+  if (!anggota) throw new Error('organisasi uji tidak punya anggota aktif')
+
+  const jidUji = `${PREFIX.replace(/-/g, '')}${Date.now()}@s.whatsapp.net`.toLowerCase()
+  const identitas = await prisma.whatsAppIdentity.create({
+    data: {
+      pnJid: jidUji,
+      phoneNumber: jidUji.split('@')[0],
+      pushName: anggota.fullName,
+      verifiedAt: new Date(),
+      verificationMethod: 'UJI_KONEKSI_DATA',
+    },
+    select: { id: true },
+  })
+  await prisma.memberIdentityLink.create({
+    data: {
+      memberId: anggota.id,
+      identityId: identitas.id,
+      organizationId: ORG,
+      verifiedAt: new Date(),
+      method: 'UJI_KONEKSI_DATA',
+    },
+  })
+  anggotaTerverifikasi = anggota
+  identitasUji = identitas
+
+  // ── Fixture: pembayaran yang tertaut ke anggota ────────────────────────────
+  //
+  // Sama alasannya: `payment_list` tanpa nama anggota tidak bisa dibedakan dari
+  // yang benar kalau tidak ada baris yang namanya HARUS muncul.
+  const tagihan = await buatTagihan({ judul: `${PREFIX} — tagihan anggota`, tempo: new Date() })
+  await prisma.invoice.update({ where: { id: tagihan.id }, data: { memberId: anggota.id } })
+  tagihanAnggotaId = tagihan.id
+
+  pembayaranAnggotaOrderId = `${PREFIX}-ORDER-${Date.now()}`
+  await prisma.payment.create({
+    data: {
+      organizationId: ORG,
+      invoiceId: tagihan.id,
+      provider: 'BATURPAY',
+      providerReference: pembayaranAnggotaOrderId,
+      amount: 25_000,
+      status: 'PENDING',
+      metadata: { qrisUrl: 'https://baturpay.test/v1/transactions/uji/qr' },
+    },
+  })
 }, 120_000)
 
 afterAll(async () => {
+  await prisma.payment.deleteMany({ where: { organizationId: ORG, providerReference: { startsWith: PREFIX } } })
+  await prisma.idempotencyKey.deleteMany({ where: { key: { startsWith: PREFIX } } })
+  if (identitasUji) {
+    await prisma.memberIdentityLink.deleteMany({ where: { identityId: identitasUji.id } })
+    await prisma.whatsAppIdentity.deleteMany({ where: { id: identitasUji.id } })
+  }
   await prisma.invoiceItem.deleteMany({ where: { invoice: { organizationId: ORG, title: { startsWith: PREFIX } } } })
   await prisma.invoice.deleteMany({ where: { organizationId: ORG, title: { startsWith: PREFIX } } })
 
@@ -196,6 +264,30 @@ describe('BUG REGRESSION: nomor WhatsApp anggota bisa dibaca model', () => {
     }
   }, 60_000)
 
+  it('BUG REGRESSION: anggota yang tertaut TERMUAT dan nomornya dikembalikan', async () => {
+    // Tanpa baris ini, seluruh test di blok ini lulus hampa: di organisasi uji
+    // tidak ada satu pun anggota yang punya tautan terverifikasi, jadi
+    // `whatsappVerified` selalu `false` dan asserts apa pun soal nomor akan
+    // benar tanpa pernah mengujinya.
+    const hasil = data(await jalankan('organization_list_members', { limit: 50 }))
+    const anggota = hasil.members as Array<{
+      memberId: string
+      name: string
+      whatsappVerified: boolean
+      whatsappJid: string | null
+    }>
+
+    const tertuang = anggota.find((a) => a.memberId === anggotaTerverifikasi!.id)
+    expect(
+      tertuang,
+      `anggota uji "${anggotaTerverifikasi!.fullName}" tidak muncul di daftar`,
+    ).toBeTruthy()
+    expect(tertuang!.whatsappVerified).toBe(true)
+    // Nomor harus benar-benar bisa dipakai — model butuh ini untuk menyebut
+    // siapa yang belum bayar lewat `whatsapp_send_message`.
+    expect(tertuang!.whatsappJid).toContain('@')
+  }, 60_000)
+
   it('organization_search_members juga melaporkan status tertaut', async () => {
     const hasil = data(await jalankan('organization_search_members', { query: 'Budi' }))
     const anggota = hasil.members as Array<{ whatsappVerified: boolean; whatsappJid: string | null }> | undefined
@@ -206,6 +298,37 @@ describe('BUG REGRESSION: nomor WhatsApp anggota bisa dibaca model', () => {
         else expect(orang.whatsappJid).toBeNull()
       }
     }
+  }, 60_000)
+})
+
+describe('BUG REGRESSION: `payment_list` bisa menjawab "siapa yang belum bayar"', () => {
+  it('BUG REGRESSION: nama anggota ikut dikembalikan', async () => {
+    // Deskripsi tool ini adalah "siapa yang belum bayar". Tanpa nama, jawaban
+    // yang keluar cuma "1 pembayaran menunggu" — dan itu tidak bisa dipakai
+    // untuk menagih siapa pun.
+    const hasil = data(await jalankan('payment_list', { status: 'PENDING', limit: 50 }))
+    const baris = (hasil.payments as Array<{ orderId: string; memberName: string | null; qrisUrl: string }>).find(
+      (p) => p.orderId === pembayaranAnggotaOrderId,
+    )
+
+    expect(baris, 'pembayaran uji tidak muncul di payment_list').toBeTruthy()
+    expect(baris!.memberName, 'payment_list tidak mengembalikan nama anggota').toBe(anggotaTerverifikasi!.fullName)
+    // Tiga hal harus bisa muncul sekaligus untuk satu baris — kalau salah satu
+    // hilang, "tagih ke Budi, scan ini" tidak bisa dijawab.
+    expect(baris!.qrisUrl, 'baris tanpa tautan QRIS tidak bisa dipakai menagih').toContain(
+      encodeURIComponent(pembayaranAnggotaOrderId),
+    )
+  }, 60_000)
+
+  it('jumlah dan nominal yang belum dibayar ikut dilaporkan', async () => {
+    const hasil = data(await jalankan('payment_list', { status: 'PENDING', limit: 50 }))
+    const baris = (hasil.payments as Array<{ orderId: string }>).find(
+      (p) => p.orderId === pembayaranAnggotaOrderId,
+    )
+
+    expect(hasil.belumBayar, 'payment_list tidak melaporkan berapa yang belum dibayar').toBeGreaterThanOrEqual(1)
+    expect(hasil.totalOutstandingText).toMatch(/^Rp /)
+    expect(baris).toBeTruthy()
   }, 60_000)
 })
 
