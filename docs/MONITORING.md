@@ -127,6 +127,27 @@ Tanpa `--org`, perintah memakai satu-satunya organisasi yang ada. Kalau lebih
 dari satu, ia **menolak** — memilih diam-diam berarti melaporkan sinyal
 organisasi yang salah, dan operator akan melihat masalah yang tidak ada.
 
+`monitor:run` menampilkan ringkasan, saran, dan dasarnya — bukan cuma jenis
+sinyalnya. Tanpa itu operator melihat "ada 9 sinyal" tapi tidak tahu apa yang
+gagal, dan jawabannya ada di SQL.
+
+### Contoh dari data nyata
+
+```
+Diukur : 507 tool call, 0 jalan agent, 0 percakapan
+
+[WARNING] TOOL_FAILURE_REPEAT
+   media_read_document gagal 10× dengan NOT_FOUND dalam 60 menit
+   → Buka rekaman jalan yang memakai media_read_document (pnpm osda run:list).
+     Kalau argumennya memang tidak lengkap dari sisi pengguna, deskripsi
+     tool-nya perlu diperjelas; kalau lengkap, bug-nya di tool.
+   tercatat 1× (baru) · dasar: evidence
+```
+
+Pemeriksaan kedua menaikkan `occurrences` ke 2 tanpa menambah baris — persis
+yang harus dilakukan. Dan semua 9 sinyal milik satu organisasi; organisasi lain
+0, meski keduanya punya data historis.
+
 ---
 
 ## 8. Yang tidak ada

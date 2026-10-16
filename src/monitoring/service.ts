@@ -137,12 +137,22 @@ export interface HasilEvaluasi {
   }
 }
 
-interface OrganizationSignalBaris {
+/**
+ * Bentuk sinyal yang dikembalikan ke pemanggil.
+ *
+ * Membawa ringkasan, saran, dan dasarnya — bukan cuma jenisnya. Tanpa itu,
+ * operator melihat "ada 7 sinyal" tapi tidak tahu apa yang gagal; jawabannya
+ * ada di SQL, yang justru hal yang paling ingin dihindari.
+ */
+export interface OrganizationSignalBaris {
   id: string
   jenis: JenisSinyal
   judul: string
   tingkat: 'INFO' | 'WARNING' | 'CRITICAL'
   occurrences: number
+  ringkasan: string
+  saran: string
+  dasar: 'evidence' | 'heuristic'
 }
 
 export class MonitoringService {
@@ -196,6 +206,9 @@ export class MonitoringService {
           judul: s.judul,
           tingkat: s.tingkat,
           occurrences: (ada?.occurrences ?? 0) + 1,
+          ringkasan: s.ringkasan,
+          saran: s.saran,
+          dasar: s.dasar,
         })
       }
       dipulihkan.push(...yangAda.filter((s) => !terlihat.some((t) => t.jenis === (s.detail as { jenis?: string })?.jenis)).map((s) => s.id))
@@ -452,6 +465,9 @@ export class MonitoringService {
       judul: s.judul,
       tingkat: baris.severity,
       occurrences: baris.occurrences,
+      ringkasan: s.ringkasan,
+      saran: s.saran,
+      dasar: s.dasar,
     }
   }
 

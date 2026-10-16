@@ -817,8 +817,16 @@ register('monitor:run', 'Periksa satu organisasi dan catat sinyal bila ada', asy
     console.log('  Tidak ada sinyal. (Datanya diukur, bukan kosong — angka di atas mengukurnya.)')
   } else {
     for (const s of hasil.sinyalBaru) {
+      // Ringkasan ikut ditampilkan. Tanpa itu operator melihat "ada 7 sinyal"
+      // tapi tidak tahu apa yang gagal — dan jawabannya ada di SQL, yang
+      // justru hal yang paling ingin dihindari.
       console.log(`  [${s.tingkat}] ${s.jenis}`)
-      console.log(`     tercatat ${s.occurrences}×${s.id === '(baru)' ? ' (baru)' : ''}`)
+      console.log(`     ${s.ringkasan}`)
+      console.log(`     → ${s.saran}`)
+      console.log(
+        `     tercatat ${s.occurrences}×${s.id === '(baru)' ? ' (baru)' : ''} · dasar: ${s.dasar}`,
+      )
+      console.log('')
     }
   }
 
