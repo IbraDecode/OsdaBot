@@ -33,6 +33,13 @@ function buatDeps(options: {
 }) {
   const dipanggil: Array<{ payload: unknown; context: Record<string, unknown> }> = []
   const updated: Baris[] = []
+  /** Jejak pencatatan yang dikirim ke registry. */
+  const jejak: Array<{
+    toolName: string
+    outcome: 'success' | 'failure'
+    actorUserId: string | null
+    organizationId: string | null
+  }> = []
 
   const prisma = {
     approval: {
@@ -58,6 +65,30 @@ function buatDeps(options: {
   }
 
   const tools = {
+    /**
+     * Wajib ada — `ToolApprovalExecutor` memanggilnya setelah setiap tindakan.
+     *
+     * Kalau ini dihapus dari double, `catatEksekusiLuar is not a function`
+     * menggagalkan test. Itu memang mengganggu, tapi lebih baik daripada
+     * pencatatan yang hilang diam-diam di produksi.
+     */
+    catatEksekusiLuar: async (params: {
+      toolName: string
+      input: unknown
+      actorUserId: string | null
+      organizationId: string | null
+      correlationId: string
+      outcome: 'success' | 'failure'
+      errorCode?: string | null
+      durationMs?: number
+    }) => {
+      jejak.push({
+        toolName: params.toolName,
+        outcome: params.outcome,
+        actorUserId: params.actorUserId,
+        organizationId: params.organizationId,
+      })
+    },
     get: (name: string) => {
       if (name === (options.namaTool ?? 'whatsapp_send_message')) {
         return {
@@ -79,12 +110,12 @@ function buatDeps(options: {
     authorization: { check: options.izin?.check ?? PERMINSI_BEBAS.check } as never,
   })
 
-  return { executor, dipanggil, updated }
+  return { executor, dipanggil, updated, jejak }
 }
 
 describe('ToolApprovalExecutor', () => {
   it('menjalankan tindakan dari payload yang tersimpan', async () => {
-    const { executor, dipanggil, updated } = buatDeps({})
+    const { executor, dipanggil, updated, jejak } = buatDeps({})
 
     const hasil = await executor.executeApproved({
       toolName: 'whatsapp_send_message',
@@ -95,6 +126,14 @@ describe('ToolApprovalExecutor', () => {
     expect(hasil.ok).toBe(true)
     expect(hasil.summary).toBe('Pesan terkirim.')
     expect(dipanggil).toHaveLength(1)
+
+    // BUG REGRESSION: tindakan yang lewat approval harus tercatat. Jalur ini
+    // melewati `ToolRegistry.execute`, jadi kalau executor tidak mencatat
+    // sendiri, `ToolExecution` tidak akan pernah punya baris untuk tool yang
+    // paling berisiko — dan monitoring buta tepat di sana.
+    expect(jejak).toHaveLength(1)
+    expect(jejak[0]!.outcome).toBe('success')
+    expect(jejak[0]!.toolName).toBe('whatsapp_send_message')
     // Payload dari DATABASE, bukan dari argumen pemanggil.
     expect(dipanggil[0]!.payload).toEqual({ text: 'halo' })
     expect(updated[0]!.executedAt).toBeInstanceOf(Date)
@@ -196,6 +235,9 @@ describe('ToolApprovalExecutor', () => {
     const executorGagal = new ToolApprovalExecutor({
       prisma: prismaGagal as never,
       tools: {
+        // Wajib ada — kalau hilang, kegagalan tool tidak akan tercatat, dan
+        // itu justru kondisi yang paling perlu terlihat.
+        catatEksekusiLuar: async () => {},
         get: () => ({
           name: 'x',
           requiredPermissions: [],
