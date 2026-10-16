@@ -1,6 +1,6 @@
 # Pembayaran BaturPay
 
-Status: **IMPLEMENTED** · **TESTED** (583 test lulus, 0 gagal)
+Status: **IMPLEMENTED** · **TESTED** (705 test lulus, 0 gagal)
 
 Semua endpoint, nama field, rentang nilai, dan status diambil dari dokumentasi
 resmi BaturPay (`baturpay.vercel.app/docs`). Tidak ada yang dikarang.
@@ -108,6 +108,34 @@ dikosongkan. Yang tetap ditolak adalah status final yang **turun** ke non-termin
 | `payment_create_charge` | `finance.create` | MEDIUM | **Ya** |
 | `payment_check_status` | `finance.read` | LOW | Tidak |
 | `payment_list` | `finance.read` | LOW | Tidak |
+| `payment_send_qris` | `finance.read` | LOW | Tidak |
+
+### `payment_send_qris` — kirim gambarnya, bukan cuma tautannya
+
+Ditambahkan setelah pemakaian nyata: pengguna membuat QRIS, lalu bertanya
+*"kasi gambar qrisnya"*, dan bot menjawab jujur bahwa gambarnya tidak ada.
+
+Botnya **tidak berbohong**. Ia melaporkan tepat apa yang tool berikan. Yang tidak
+lengkap adalah tool-nya:
+
+1. `payment_check_status` dan `payment_list` mengembalikan status tapi **tidak
+   mengembalikan `qrisUrl`** — padahal ada di `Payment.metadata`. Jawaban
+   "mana linknya?" jadi "tidak ada".
+2. `WhatsAppProvider.sendImage` sudah ada sejak awal dan **tidak pernah dipakai
+   tool mana pun**. Jadi permintaan gambar tidak punya jalan sama sekali.
+
+Keduanya diperbaiki. `qrisUrl` diturunkan dari `orderId` — deterministik, tanpa
+perlu memanggil penyedia lagi — dan dikirim ke percakapan **asal** saja.
+
+Tidak butuh persetujuan, dan itu disengaja: tujuannya hanya chat yang memintanya,
+jadi tidak ada pihak ketiga yang terlibat. Berbeda dengan `document_send`, yang
+bisa mengirim ke orang lain dan karena itu butuh persetujuan.
+
+| Aturan | Kenapa |
+|---|---|
+| Tidak ada parameter `to` | QRIS menautkan orang ke tagihan tertentu. Meneruskannya ke nomor yang salah berarti orang yang salah bisa membayar tagihan yang bukan miliknya. Skema-nya `strict()`, jadi `to` di luar skema **ditolak**, bukan diabaikan diam-diam. |
+| Order yang tidak ada → `NOT_FOUND` | Membuat order baru diam-diam menghasilkan dua permintaan transfer untuk satu tagihan, dan pengguna tidak tahu mana yang benar. |
+| Mengirim gambar **tidak mengubah status** | Status hanya berubah lewat webhook penyedia. Kalau kirim gambar bisa mengubah status, bot bisa bilang "sudah bayar" tanpa satu rupiah pun masuk. |
 
 Setiap hasil status mengembalikan field `interpretation` — kalimat yang sudah
 aman untuk disampaikan ke pengguna. Diberikan eksplisit supaya model tidak
@@ -145,4 +173,6 @@ sedikit langsung gagal; timestamp yang diganti gagal.
 | **Tidak ada pembatalan atau refund.** | Harus lewat dashboard BaturPay. |
 | **Tidak ada rekonsiliasi otomatis.** | Pembayaran di luar sistem tetap tidak terlihat. |
 | **`verifiedAt` tidak pernah diisi provisioning.** | Nomor env adalah klaim, bukan bukti — tidak berubah. |
-| **`qris_url` tidak disimpan terpisah.** | Ambient-nya tersimpan di `Payment.metadata`; tidak ada endpoint untuk mengambil ulang QR dari sistem kita. |
+| **`qris_url` tidak disimpan terpisah.** | Ambient-nya tersimpan di `Payment.metadata`; tidak ada endpoint untuk mengambil ulang QR dari sistem kita. Tautan tetap bisa dibentuk ulang dari `orderId`, tapi hanya untuk `baseUrl` yang sedang aktif — kalau penyedia pindah, tautan lama tidak ikut pindah. |
+| **`payment_send_qris` hanya ke percakapan asal.** | Tidak bisa mengirim QRIS ke anggota tertentu. Untuk itu, `whatsapp_send_message` yang dipakai — dan itu butuh persetujuan. |
+| **`capture` dari penyedia berarti BELUM lunas.** | `payment_check_status` melaporkan `capture` sebagai belum final. Kalau BaturPay pernah memakai `capture` untuk menandai pelunasan, bot akan terlihat salah sampai webhook diterima. |

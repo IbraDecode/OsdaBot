@@ -15,7 +15,7 @@ pnpm db:migrate && pnpm db:seed && pnpm dev
 
 | | |
 |---|---|
-| Test | **687 lulus, 0 gagal** (14 live dilewati) |
+| Test | **705 lulus, 0 gagal** (14 live dilewati) |
 | Tool | 15 |
 | Skill | 3 |
 | Permission | 50 |

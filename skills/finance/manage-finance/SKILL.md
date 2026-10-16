@@ -91,6 +91,27 @@ tanpa menandai lunas sebelum uang benar-benar diterima.
    pengguna tidak menyebut yang mana, tool menolak. Itu pertanyaan yang harus
    balik ke pengguna, bukan ditebak.
 
+### Mencari tagihan yang menunggak
+
+`finance_list_invoices` dengan `status: "overdue"`.
+
+**`overdue` dihitung saat dibaca, bukan disimpan sebagai status.** Jadi:
+
+- `status` di hasil adalah status yang sudah memperhitungkan tenggat:
+  `"overdue"` kalau lewat, sisanya apa adanya.
+- `statusTersimpan` adalah nilai asli di database — biasanya `"unpaid"` atau
+  `"partial"`.
+- `terlamaHari` berisi banyaknya hari telat. **`null` berarti tidak punya
+  tenggat, bukan "0 hari telat"** — dua hal yang sangat berbeda.
+
+Saringan `overdue` dulu mengirim `"overdue"` sebagai nilai kolom `status`,
+padahal tidak ada satu pun tagihan yang kolomnya berisi itu. Hasilnya selalu
+nol baris: bendahara yang bertanya "tagihan lewat tenggat mana?" dijawab "0
+tagihan" padahal ada yang menunggak.
+
+Yang **tidak** masuk hitungan: tagihan `paid`. Menjawab "menunggak 30 hari" untuk
+tagihan yang sudah lunas adalah kebohongan.
+
 ## Cara membalas
 
 - Sebut nominal dalam rupiah penuh: "Rp 150.000", bukan "150rb".
@@ -106,5 +127,8 @@ tanpa menandai lunas sebelum uang benar-benar diterima.
 - **Tidak ada penalti otomatis atau pengingat jatuh tempo.** Kalau pengguna
   minta "tagih yang belum bayar", itu `finance_list_invoices`, bukan mengirim
   pesan otomatis.
+- **Tagihan tidak punya tombol ubah tanggal jatuh tempo.** Kalau pengguna
+  minta "tenggatnya digeser ke Jumat", sampaikan apa adanya — jangan mengarang
+  perubahan yang tidak terjadi.
 - **Pembatalan tagihan belum ada.** Kalau tagihan salah, catat sebagai koreksi
   dan jelaskan ke pengguna.

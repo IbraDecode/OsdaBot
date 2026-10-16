@@ -1,6 +1,6 @@
 # Audit Kemampuan
 
-Status: **IMPLEMENTED** · **TESTED** (686 test lulus, 0 gagal)
+Status: **IMPLEMENTED** · **TESTED** (705 test lulus, 0 gagal)
 
 `tests/integration/capability-audit.test.ts`
 
@@ -170,3 +170,72 @@ Yang **tidak** bisa diselesaikan dengan menulis dokumentasi:
 
 Semua tercatat di sini dan di `IZIN_TANPA_TOOL` / `TABEL_MATI` pada test —
 jadi tidak bisa dilupakan diam-diam.
+
+---
+
+## 7. Audit kedua: koneksi data tool → model
+
+`tests/integration/koneksi-data.test.ts`
+
+### Pola yang berulang, untuk kedua kalinya
+
+Audit pertama menemukan tool yang tidak pernah terkirim ke model. Audit ini
+menemukan kelas yang lebih halus, dan lebih berbahaya karena tidak terasa:
+
+```
+data ADA di database  →  tapi TIDAK masuk keluaran tool
+  →  bot menjawab benar secara harfiah, salah secara faktual
+  →  tidak ada error, tidak ada log, semua test hijau
+```
+
+Yang membuatnya bertahan adalah botnya **jujur**. Ia melaporkan tepat apa yang
+tool berikan. Tidak ada yang gagal — yang tidak lengkap adalah tool-nya.
+
+Temuan ini datang dari pemakaian nyata, bukan dari review kode. Pengguna membuat
+QRIS Rp 100, lalu bertanya *"mana linknya"* dan *"kasi gambar qrisnya"*. Bot
+menjawab jujur bahwa tautannya tidak tersedia. Itu benar: memang tidak ada yang
+mengembalikannya.
+
+### Yang ditemukan
+
+| # | Tool | Yang hilang | Akibat ke pengguna |
+|---|---|---|---|
+| 1 | `finance_list_invoices` | Saringan `overdue` ditawarkan tapi `Invoice.status` tidak pernah bernilai `'overdue'` | "Tagihan yang lewat tenggat mana?" dijawab **0 tagihan** padahal ada yang menunggak. |
+| 2 | `organization_list_members` | Nomor WhatsApp tidak pernah dikembalikan | "Kirim tagihan ke Budi" tidak bisa dijawab tanpa menebak nomor. |
+| 3 | `payment_list` | Nama anggota tidak ikut dikembalikan | Tool yang deskripsinya "siapa yang belum bayar" hanya menjawab "3 pembayaran menunggu" — tidak bisa dipakai untuk menagih siapa pun. |
+| 4 | `attendance_get` | `entryId: null` ditulis secara harfiah | `attendance_update` yang memperlakukannya sebagai paling presisi tidak pernah bisa dipakai; anggota dengan lebih dari satu entri tidak bisa diperbaiki tepat. |
+
+Nomor 1 dan 4 punya satu akar yang sama: **nilai yang seharusnya dihitung saat
+baca ditulis sebagai kolom yang tidak pernah diisi.** `Task.overdue` sudah
+diselesaikan duluan dengan cara yang benar — dihitung saat baca. `Invoice` dan
+`AttendanceEntry` tidak.
+
+Nomor 2 punya akar lain: `IdentityEngine.verifiedIdentityForMember()` ada di
+`resolver.ts` dan **tidak pernah dipanggil siapa pun**. Kode benar, tapi tak
+terjangkau — pola yang sama seperti di audit pertama.
+
+### Test yang lulus hampa, untuk ketiga kalinya
+
+Dua test pertama **lulus dengan fixture kosong**:
+
+- Tidak ada anggota di organisasi uji yang punya tautan terverifikasi, jadi
+  `whatsappVerified` selalu `false` dan asserts soal nomor benar tanpa pernah
+  mengujinya.
+- Tidak ada pembayaran yang tertaut ke anggota, jadi `memberName` tidak pernah
+  punya nilai yang bisa diperiksa.
+
+Kali ini fixture dibuat di `beforeAll`: satu anggota ditautkan ke identitas
+verifikasi, satu tagihan dibuat untuk anggota itu. Test tidak boleh bergantung
+pada data yang kebetulan ada.
+
+Verifikasi regresi: keempat perbaikan dimatikan satu per satu, keempatnya
+ditangkap.
+
+### Invarian baru
+
+Aturan yang ditambahkan ke `docs/AUDIT.md`:
+
+> Tool yang mengembalikan daftar **wajib** mengembalikan identitasthing yang
+> membuat daftar itu berguna — nama, nomor, atau id yang bisa dipakai pada
+> langkah berikutnya. Tool yang mengembalikan **saringan** wajib mengujinya
+> terhadap data nyata, bukan hanya meneruskan enum-nya ke database.
