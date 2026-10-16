@@ -305,12 +305,30 @@ export function buildPaymentTools(deps: PaymentToolsDeps): Array<ToolDefinition<
           status: row.status,
           interpretation: interpretasi(row.status),
           invoiceNumber: row.invoiceNumber,
+          invoiceTitle: row.invoiceTitle,
+          // Tanpa nama anggota, "siapa yang belum bayar?" dijawab "3 tagihan
+          // menunggu" — yang tidak bisa dipakai untuk menagih siapa pun.
+          memberName: row.memberName,
           createdAt: row.createdAt.toISOString().slice(0, 10),
-          //。见 `payment_check_status`: tautan QRIS diturunkan dari orderId, dan
-          // tanpa ini pengguna harus bertanya satu per satu.
+          // Lihat `payment_check_status`: tautan QRIS diturunkan dari orderId,
+          // jadi tidak perlu memanggil penyedia sekali lagi.
           qrisUrl: payments.qrUrlUntuk(row.orderId),
         })),
-        message: `${rows.length} pembayaran${status ? ` dengan status ${status}` : ''}.`,
+        // Dihitung dari baris yang terlihat, bukan dari seluruh tabel. Kalau
+        // ada lebih dari `limit`, angka ini hanya untuk yang tampil — dan itu
+        // harus dinyatakan, bukan diam-diam.
+        totalOutstanding: rows.reduce((jumlah, row) => jumlah + row.amount, 0),
+        totalOutstandingText: `Rp ${formatAmount(rows.reduce((jumlah, row) => jumlah + row.amount, 0))}`,
+        belumBayar: rows.filter((row) => row.status === 'PENDING').length,
+        message:
+          `${rows.length} pembayaran${status ? ` dengan status ${status}` : ''}` +
+          (rows.some((row) => row.status === 'PENDING')
+            ? `, ${rows.filter((row) => row.status === 'PENDING').length} belum dibayar` +
+              (rows.every((row) => row.memberName !== null)
+                ? ` (${rows.filter((row) => row.status === 'PENDING').map((row) => row.memberName).join(', ')})`
+                : '')
+            : '') +
+          '.',
       }
     },
   }

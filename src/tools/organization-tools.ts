@@ -70,6 +70,17 @@ export function buildOrganizationTools(deps: OrganizationToolsDeps): Array<ToolD
           className: true,
           nickname: true,
           aliases: { select: { alias: true } },
+          // Identitas WhatsApp ikut diambil supaya "kirim tagihan ke Budi"
+          // bisa dijawab tanpa menebak nomornya.
+          //
+          // Hanya yang **terverifikasi** yang diambil: mention otomatis ke
+          // orang yang belum membuktikan nomornya adalah kesalahan yang tidak
+          // bisa ditarik kembali.
+          identityLinks: {
+            where: { verifiedAt: { not: null } },
+            select: { identity: { select: { id: true, pnJid: true, lidJid: true } } },
+            take: 1,
+          },
         },
       })
 
@@ -78,13 +89,20 @@ export function buildOrganizationTools(deps: OrganizationToolsDeps): Array<ToolD
       return {
         total,
         returned: members.length,
-        members: members.map((member) => ({
-          memberId: member.id,
-          name: member.fullName,
-          class: member.className,
-          nickname: member.nickname,
-          aliases: member.aliases.map((alias) => alias.alias),
-        })),
+        members: members.map((member) => {
+          const identitas = member.identityLinks[0]?.identity ?? null
+          return {
+            memberId: member.id,
+            name: member.fullName,
+            class: member.className,
+            nickname: member.nickname,
+            aliases: member.aliases.map((alias) => alias.alias),
+            whatsappVerified: Boolean(identitas),
+            // Hanya diisi kalau tautannya terverifikasi. `null` berarti "tidak
+            // tahu" — bukan berarti nomornya tidak ada.
+            whatsappJid: identitas?.pnJid ?? identitas?.lidJid ?? null,
+          }
+        }),
       }
     },
   }
@@ -186,7 +204,7 @@ export function buildOrganizationTools(deps: OrganizationToolsDeps): Array<ToolD
       const organizationId = requireOrg(context)
 
       // Cek duplikat nama persis agar tidak menambah dua orang dengan nama sama
-      // tanpa sadar (menyatelkan해 baris 'cadangan' pun di dibuat diam-diam).
+      // tanpa sadar (menyembunyikan baris 'cadangan' pun dibuat diam-diam).
       const searchName = canonicalizeName(input.fullName)
       const existing = await prisma.organizationMember.findMany({
         where: { organizationId, isActive: true, searchName },
@@ -398,7 +416,7 @@ export function buildOrganizationTools(deps: OrganizationToolsDeps): Array<ToolD
   const getGroupMembers: ToolDefinition<Record<string, never>, unknown> = {
     name: 'whatsapp_get_group_members',
     description:
-      'Ambil daftar anggota grup WhatsApp. Hanya untuk memastikan keanggotaan grup — BUKAN untuk 판단 siapa yang berwenang di organisasi.',
+      'Ambil daftar anggota grup WhatsApp. Hanya untuk memastikan keanggotaan grup — BUKAN untuk menilai siapa yang berwenang dalam organisasi.',
     inputSchema: z.object({}) as never,
     requiredPermissions: [PERMISSIONS.WHATSAPP_SEND],
     riskLevel: 'LOW',
@@ -420,7 +438,7 @@ export function buildOrganizationTools(deps: OrganizationToolsDeps): Array<ToolD
           jid: participant.jid,
           isGroupAdmin: participant.isAdmin,
         })),
-        note: 'Status admin di grup WhatsApp BUKAN berarti hak administrasi di organisasi.',
+        note: 'Status admin di grup WhatsApp BUKAN berarti hak administrasi dalam organisasi.',
       }
     },
   }

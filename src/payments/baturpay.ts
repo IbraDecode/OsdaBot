@@ -418,6 +418,15 @@ async listPayments(
     amount: number
     status: PaymentStatus
     invoiceNumber: string | null
+    /** Judul tagihan — "Iuran Agustus". */
+    invoiceTitle: string | null
+    /**
+     * Nama anggota yang ditagih.
+     *
+     * `null` untuk tagihan tingkat organisasi, bukan "tidak diketahui" — jadi
+     * pembedaannya jelas.
+     */
+    memberName: string | null
     createdAt: Date
   }>
 > {
@@ -434,7 +443,16 @@ async listPayments(
       amount: true,
       status: true,
       createdAt: true,
-      invoice: { select: { number: true } },
+      invoice: {
+        select: {
+          number: true,
+          title: true,
+          // Nama ikut diambil karena use case utama `payment_list` adalah
+          // "siapa yang belum bayar". Tanpa nama, tool hanya menjawab "3 tagihan
+          // menunggu" — dan itu tidak bisa dipakai untuk menagih siapa pun.
+          member: { select: { fullName: true } },
+        },
+      },
     },
   }).then((rows) =>
     rows.map((row) => ({
@@ -442,6 +460,8 @@ async listPayments(
       amount: row.amount,
       status: row.status,
       invoiceNumber: row.invoice?.number ?? null,
+      invoiceTitle: row.invoice?.title ?? null,
+      memberName: row.invoice?.member?.fullName ?? null,
       createdAt: row.createdAt,
     })),
   )

@@ -92,8 +92,8 @@ afterAll(async () => {
  *
  * Dipakai untuk membersihkan sisa dari run sebelumnya. Tanpa itu, test
  * `urutan tagihan` ikut bergantung pada berapa kali test sudah dijalankan —
- * dan ia gagal bukan karena kodenya salah, tapi karena(tagihan sudah lunas)
- * tenggelam di luar batas 20 baris.
+ * dan ia gagal bukan karena kodenya salah, tapi karena tagihan dari run
+ * sebelumnya sudah lunas dan tenggelam di luar batas 20 baris.
  */
 const PREFIX_UJI = 'Tagihan '
 

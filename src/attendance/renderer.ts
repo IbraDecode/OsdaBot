@@ -70,6 +70,19 @@ export const DEFAULT_TEMPLATE: AttendanceTemplate = {
 }
 
 export interface RenderEntry {
+  /**
+   * ID entri kehadiran di database.
+   *
+   * Wajib ada kalau barisnya benar-benar tersimpan. Dipakai `attendance_update`
+   * yang memperlakukan `entryId` sebagai paling presisi — tanpa ini, satu
+   * anggota yang punya lebih dari satu entri (mis. hadir lalu izin) tidak bisa
+   * diperbaiki dengan tepat.
+   *
+   * Opsional karena renderer teks memakainya hanya untuk tampilan, dan daftar
+   * yang dirakit tangan (test, pratinjau) memang tidak punya ID. Kalau diisi,
+   * `attendance_get` menyalinnya supaya `attendance_update` bisa Precis.
+   */
+  entryId?: string | null
   memberId: string | null
   displayName: string
   className: string | null
@@ -263,9 +276,14 @@ export function extractTitle(markdown: string, fallback = DEFAULT_TEMPLATE.title
 
 /** Ubah entri Prisma menjadi bentuk render. */
 export function toRenderEntries(
-  entries: Array<Pick<AttendanceEntry, 'memberId' | 'displayName' | 'className' | 'status' | 'reason'>>,
+  entries: Array<
+    Pick<AttendanceEntry, 'id' | 'memberId' | 'displayName' | 'className' | 'status' | 'reason'>
+  >,
 ): RenderEntry[] {
   return entries.map((entry) => ({
+    // renderer teks tidak memakainya, tapi pemanggilnya (`attendance_get`)
+    // butuh untuk bisa mengarahkan perbaikan ke entri yang tepat.
+    entryId: entry.id ?? null,
     memberId: entry.memberId,
     displayName: entry.displayName,
     className: entry.className,

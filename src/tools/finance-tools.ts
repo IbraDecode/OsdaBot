@@ -322,10 +322,29 @@ export function buildFinanceTools(deps: FinanceToolsDeps): Array<ToolDefinition<
           totalText: `Rp ${formatAmount(invoice.totalAmount)}`,
           remainingText: `Rp ${formatAmount(invoice.remainingAmount)}`,
           dueAt: invoice.dueAt,
+          // Dihitung saat baca, bukan disimpan — jadi tidak bisa basi dan tidak
+          // bisa luput dari filter.
+          overdue: invoice.status === 'overdue',
+          terlamaHari: invoice.terlamaHari,
+          // Dipisah supaya model tahu bedanya "status di database" dari
+          // "status setelah memperhitungkan tenggat". Tanpa ini, tagihan yang
+          // sebenarnya `unpaid` terlihat sama dengan yang sudah lewat tenggat.
+          statusTersimpan: invoice.statusTersimpan,
         })),
         totalOutstanding: totalSisa,
         totalOutstandingText: `Rp ${formatAmount(totalSisa)}`,
-        message: `${invoices.length} tagihan, total sisa Rp ${formatAmount(totalSisa)}.`,
+        // Dihitung dari baris yang tampil, bukan dari semua tagihan organisasi.
+        // Kalau lewat 200 baris, total ini hanya menj ستحromo yang terlihat —
+        // dan itu harus diketahui.
+        totalOutstandingVisible: totalSisa,
+        overdueCount: invoices.filter((i) => i.status === 'overdue').length,
+        overdueCountText: `${invoices.filter((i) => i.status === 'overdue').length} tagihan lewat tenggat`,
+        message:
+          `${invoices.length} tagihan, total sisa Rp ${formatAmount(totalSisa)}` +
+          (invoices.some((i) => i.status === 'overdue')
+            ? `, ${invoices.filter((i) => i.status === 'overdue').length} di antaranya lewat tenggat`
+            : '') +
+          '.',
       }
     },
   }

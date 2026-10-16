@@ -29,7 +29,7 @@
  *    harus ditanyakan — bisa salah transfer, bisa salah baca nominal. Menerimanya
  *    berarti uang hilang tanpa jejak.
  */
-import type { PrismaClient } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 import { logger } from '../observability/logger.js'
 
 const log = logger.child({ module: 'finance' })
@@ -158,7 +158,16 @@ export interface RecordPaymentInput {
 }
 
 export class FinanceService {
-  constructor(private readonly prisma: PrismaClient) {}
+  /**
+   * Jam "sekarang", bisa di-pin untuk test.
+   *
+   * `overdue` dihitung dari sini, jadi test tidak perlu menunggu sampai besok.
+   */
+  private readonly jamSekarang: () => Date
+
+  constructor(private readonly prisma: PrismaClient, jamSekarang: () => Date = () => new Date()) {
+    this.jamSekarang = jamSekarang
+  }
 
   /** Buat akun kas/bank. Saldo awal dicatat sebagai mutasi `opening`. */
   async createAccount(input: CreateAccountInput): Promise<{ id: string; name: string; balance: number }> {
@@ -542,14 +551,40 @@ export class FinanceService {
       paidAmount: number
       remainingAmount: number
       dueAt: Date | null
+      /** Status apa yang benar-benar tersimpan di database. */
+      statusTersimpan: string
+      /** Berapa hari telat. `null` kalau belum lewat tenggat atau tanpa tenggat. */
+      terlamaHari: number | null
     }>
   > {
+    const sekarang = this.jamSekarang()
+
+    // Saringan `overdue` TIDAK bisa dikirim ke database sebagai `status`.
+    //
+    // `Invoice.status` tidak pernah bernilai `'overdue'` — tidak ada satu pun
+    // tempat yang menulisnya. Jadi filter itu selalu mengembalikan nol, dan
+    // bendahara yang bertanya "tagihan yang lewat tenggat mana?" dijawab
+    // "0 tagihan" padahal ada yang belum tertagih.
+    //
+    // Ditangani sama seperti `Task.overdue`: **dihitung saat baca**, bukan
+    // disimpan. Kolomnya jadi tidak bisa basi.
+    const menua = {
+      status: { in: ['unpaid', 'partial'] as string[] },
+      dueAt: { not: null, lt: sekarang },
+    }
+
+    const where: Prisma.InvoiceWhereInput = {
+      organizationId,
+      ...(options.memberId ? { memberId: options.memberId } : {}),
+      ...(options.status
+        ? options.status === 'overdue'
+          ? menua
+          : { status: options.status }
+        : {}),
+    }
+
     const invoices = await this.prisma.invoice.findMany({
-      where: {
-        organizationId,
-        ...(options.memberId ? { memberId: options.memberId } : {}),
-        ...(options.status ? { status: options.status } : {}),
-      },
+      where,
       orderBy: { createdAt: 'desc' },
       // Batas pengambilan dijaga supaya penyortiran di memori tidak tumbuh
       // tanpa batas. Konsekuensinya: kalau satu organisasi punya lebih dari
@@ -568,17 +603,30 @@ export class FinanceService {
       },
     })
 
-    const hasil = invoices.map((invoice) => ({
-      id: invoice.id,
-      number: invoice.number,
-      title: invoice.title,
-      memberName: invoice.member?.fullName ?? null,
-      status: invoice.status,
-      totalAmount: invoice.totalAmount,
-      paidAmount: invoice.paidAmount,
-      remainingAmount: Math.max(0, invoice.totalAmount - invoice.paidAmount),
-      dueAt: invoice.dueAt,
-    }))
+    const hasil = invoices.map((invoice) => {
+      // Status yang dilaporkan adalah status NYATA, dengan menandai lewat tenggat
+      // sebagai status tersendiri — bukan mengubah kolomnya.
+      const lewatTenggat =
+        invoice.dueAt !== null &&
+        invoice.dueAt.getTime() < sekarang.getTime() &&
+        (invoice.status === 'unpaid' || invoice.status === 'partial')
+
+      return {
+        id: invoice.id,
+        number: invoice.number,
+        title: invoice.title,
+        memberName: invoice.member?.fullName ?? null,
+        status: lewatTenggat ? 'overdue' : invoice.status,
+        statusTersimpan: invoice.status,
+        totalAmount: invoice.totalAmount,
+        paidAmount: invoice.paidAmount,
+        remainingAmount: Math.max(0, invoice.totalAmount - invoice.paidAmount),
+        dueAt: invoice.dueAt,
+        // Berapa hari telat. Untuk yang belum punya tenggat: `null`, bukan 0 —
+        // "0 hari telat" dan "tanpa tenggat" sangat berbeda artinya.
+        terlamaHari: lewatTenggat ? Math.floor((sekarang.getTime() - invoice.dueAt!.getTime()) / 86_400_000) : null,
+      }
+    })
 
     const prioritas: Record<string, number> = {
       overdue: 0,

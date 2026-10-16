@@ -93,7 +93,13 @@ export function buildAttendanceTools(deps: AttendanceToolsDeps): Array<ToolDefin
         /** Teks siap kirim — renderer memakai format yang sudah disimpan. */
         rendered: await attendance.renderList(organizationId, event.id),
         entries: renderEntries.map((entry) => ({
-          entryId: null,
+          // ID entri asli, bukan `null` seperti versi pertama tool ini.
+          //
+          // `attendance_update` memperlakukan `entryId` sebagai paling presisi.
+          // Kalau `attendance_get` tidak pernah mengembalikannya, model selalu
+          // harus jatuh ke `memberId` — dan anggota yang punya lebih dari satu
+          // entri jadi tidak bisa diperbaiki dengan tepat.
+          entryId: entry.entryId ?? null,
           memberId: entry.memberId,
           name: entry.displayName,
           class: entry.className,

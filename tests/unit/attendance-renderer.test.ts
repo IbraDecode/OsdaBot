@@ -152,6 +152,7 @@ describe('toRenderEntries', () => {
   it('memetakan entri Prisma ke bentuk render', () => {
     const entries = toRenderEntries([
       {
+        id: 'entri-1',
         memberId: 'm1',
         displayName: 'Budi',
         className: 'X',
@@ -160,11 +161,26 @@ describe('toRenderEntries', () => {
       },
     ])
     expect(entries[0]).toEqual({
+      // BUG REGRESSION: `entryId` ikut dipetakan. Tanpa itu `attendance_get`
+      // tidak pernah bisa mengembalikan ID entri, dan `attendance_update`
+      // — yang memperlakukannya sebagai paling presisi — jadi tidak bisa dipakai
+      // untuk anggota yang punya lebih dari satu entri.
+      entryId: 'entri-1',
       memberId: 'm1',
       displayName: 'Budi',
       className: 'X',
       status: 'PRESENT',
       reason: null,
     })
+  })
+
+  it('baris tanpa ID menghasilkan entryId null, bukan undefined', () => {
+    // Daftar yang dirakit tangan (test, pratinjau) tidak punya ID. Hasilnya
+    // harus `null` supaya pemanggil bisa membedakan "tidak punya ID" dari
+    // "field-nya lupa diisi".
+    const entries = toRenderEntries([
+      { memberId: 'm1', displayName: 'Budi', className: null, status: 'PRESENT', reason: null } as never,
+    ])
+    expect(entries[0]!.entryId).toBeNull()
   })
 })
