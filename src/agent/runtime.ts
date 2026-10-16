@@ -25,6 +25,7 @@ import { LlmError } from './llm/provider.js'
 import { buildSystemPrompt } from './prompt.js'
 import type { AuthorizationService } from '../security/authorization.js'
 import type { ToolRegistry } from '../tools/registry.js'
+import type { AgentRunRecorder, SelesaiParams } from './run-recorder.js'
 import type { ToolExecutionContext, ToolResult } from '../tools/types.js'
 
 const log = logger.child({ module: 'agent' })
@@ -132,6 +133,16 @@ export interface AgentRuntimeDeps {
   tools: ToolRegistry
   /** Satu-satunya sumber kebenaran izin. Disuntikkan, bukan diambil global. */
   authorization: AuthorizationService
+  /**
+   * Pencatat jalan agent.
+   *
+   * Opsional supaya `AgentRuntime` tetap bisa dipakai tanpa database — sebagian
+   * test memverifikasi hal-hal yang tidak perlu rekaman.
+   *
+   * Yang menulis rekaman TIDAK boleh menggagalkan percakapan; itu dijamin
+   * di dalam `AgentRunRecorder`, bukan di sini.
+   */
+  recorder?: AgentRunRecorder
   botName?: string
   maxSteps?: number
   maxToolCalls?: number
@@ -178,6 +189,28 @@ export class AgentRuntime {
     })
     const availableToolNames = rawSchemas.map((schema) => schema.function.name)
     const toolSchemas: ToolDefinitionForModel[] = rawSchemas.map((schema) => schema.function)
+
+    // Rekaman dibuka SETELAH daftar tool diketahui — `availableTools` adalah
+    // bagian dari jawaban "kenapa agent tidak memakai tool yang ada", dan itu
+    // pertanyaan yang paling sering muncul saat agent salah.
+    //
+    // `context.taskId` diisi dari sini supaya `ToolExecution` punya sesuatu untuk
+    // ditautkan. Sebelumnya kolom itu selalu null: 2232 baris eksekusi, nol
+    // yang terhubung ke apa pun.
+    const recorder = this.deps.recorder
+    const runId = recorder
+      ? await recorder.mulai({
+          correlationId: request.correlationId,
+          actorUserId: request.actorUserId,
+          organizationId: request.organizationId,
+          conversationId: request.conversationId,
+          chatJid: request.chatJid,
+          isGroup: request.isGroup,
+          availableToolNames: rawSchemas.map((schema) => schema.function.name),
+        })
+      : null
+
+    context.taskId = runId
 
     const systemPrompt = buildSystemPrompt({
       botName: this.botName,
@@ -231,6 +264,15 @@ export class AgentRuntime {
         const mapped = error instanceof LlmError ? error : new LlmError('unknown', String(error), true)
         childLog.error({ kind: mapped.kind }, 'permintaan LLM gagal')
 
+        await this.tutupRekaman(recorder, {
+          status: 'failed',
+          alasan: 'LLM_ERROR',
+          toolCalls: totalToolCalls,
+          usage: totalUsage,
+          errorCode: mapped.kind,
+          retryable: mapped.retryable,
+        })
+
         return {
           status: 'failed',
           message: providerErrorMessage(mapped),
@@ -249,6 +291,16 @@ export class AgentRuntime {
 
         if (text === '') {
           childLog.warn({ steps }, 'model tidak mengembalikan teks maupun tool call')
+
+          await this.tutupRekaman(recorder, {
+            status: 'failed',
+            alasan: 'EMPTY_RESPONSE',
+            toolCalls: totalToolCalls,
+            usage: totalUsage,
+            errorCode: 'EMPTY_RESPONSE',
+            retryable: true,
+          })
+
           return {
             status: 'failed',
             message: 'Aku belum bisa memproses itu. Coba ulangi dengan kalimat yang lebih jelas.',
@@ -256,6 +308,18 @@ export class AgentRuntime {
             retryable: true,
           }
         }
+
+        // Putaran tanpa tool call = jawaban akhir. Ini tercatat sebagai langkah
+        // supaya rekaman bisa membedakan "berhenti karena selesai" dari
+        // "berhenti karena tidak ada gunanya lagi".
+        recorder?.langkah({ toolNames: [] })
+
+        await this.tutupRekaman(recorder, {
+          status: 'completed',
+          alasan: 'JAWABAN_FINAL',
+          toolCalls: totalToolCalls,
+          usage: totalUsage,
+        })
 
         return {
           status: 'completed',
@@ -276,6 +340,14 @@ export class AgentRuntime {
           function: { name: call.name, arguments: JSON.stringify(call.arguments) },
         })),
       })
+
+      // Rekaman langkah: satu putaran LLM = satu langkah.
+      //
+      // Yang dicatat adalah **niat** (tool apa yang diminta), bukan hanya
+      // hasilnya. Kalau satu tool gagal tiga kali, itu terlihat sebagai satu
+      // langkah yang bermasalah — bukan tiga baris terpisah yang harus
+      // disatukan sendiri.
+      const namaToolPutaran = response.toolCalls.map((c) => c.name)
 
       for (const call of response.toolCalls) {
         totalToolCalls += 1
@@ -319,10 +391,22 @@ export class AgentRuntime {
         if (!result.success) failedCalls.add(sidikJari)
         messages.push({ role: 'tool', tool_call_id: call.id, content: serializeResult(result) })
       }
+
+      recorder?.langkah({ toolNames: namaToolPutaran })
     }
 
     // Kasus 3: langkah habis tanpa jawaban final.
     childLog.warn({ maxSteps: this.maxSteps, totalToolCalls }, 'langkah agent habis')
+
+    await this.tutupRekaman(recorder, {
+      status: 'completed',
+      // `completed` karena pengguna tetap menerima balasan yang jujur — tapi
+      // alasannya dicatat supaya tidak disalahartikan sebagai "beres".
+      alasan: 'MAX_STEPS',
+      toolCalls: totalToolCalls,
+      usage: totalUsage,
+    })
+
     return {
       status: 'completed',
       message:
@@ -330,6 +414,24 @@ export class AgentRuntime {
       steps,
       toolCalls: totalToolCalls,
       usage: totalUsage,
+    }
+  }
+
+  /**
+   * Tutup rekaman jalan agent.
+   *
+   * Tidak pernah melempar. Kalau pencatatan gagal, percakapan tetap berakhir
+   * seperti seharusnya — pengguna tidak boleh tahu kalau masalahnya di audit.
+   */
+  private async tutupRekaman(
+    recorder: AgentRunRecorder | undefined,
+    params: SelesaiParams,
+  ): Promise<void> {
+    if (!recorder) return
+    try {
+      await recorder.selesai(params)
+    } catch (error) {
+      log.error({ err: error }, 'gagal menutup rekaman agent')
     }
   }
 

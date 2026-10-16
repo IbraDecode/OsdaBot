@@ -14,6 +14,7 @@ import { FinanceService } from './finance/service.js'
 import { GroupLinkService } from './groups/service.js'
 import { TaskService } from './tasks/service.js'
 import { SafeModeService } from './system/safe-mode.js'
+import { AgentRunRecorder } from './agent/run-recorder.js'
 import { DocumentService, LocalStorageDriver } from './documents/service.js'
 import { KnowledgeService } from './knowledge/service.js'
 import { BaturPayAdapter } from './payments/baturpay.js'
@@ -111,6 +112,9 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<Applica
 
   const agent = new AgentRuntime({
     llm,
+    // Rekaman jalan agent. Tanpa ini, `ToolExecution.taskId` selalu null dan
+    // tidak ada yang bisa menjawab "kenapa agent ini salah".
+    recorder: new AgentRunRecorder(prisma),
     tools,
     authorization,
     ...(options.maxSteps ? { maxSteps: options.maxSteps } : {}),

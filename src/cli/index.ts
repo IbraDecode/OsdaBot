@@ -655,6 +655,128 @@ register('db:seed', 'Isi data contoh (organisasi fiktif) untuk pengembangan', as
 })
 
 // ---------------------------------------------------------------------------
+// Rekaman jalan agent
+// ---------------------------------------------------------------------------
+
+register('run:list', 'Jalan agent terbaru beserta alasan berhentinya', async () => {
+  const { ringkasRekaman } = await import('../agent/run-recorder.js')
+  const args = parseArgs(process.argv.slice(3))
+  const ambil = parseInt(args.limit ?? '10', 10)
+
+  const baris = await prisma.agentTask.findMany({
+    orderBy: { createdAt: 'desc' },
+    take: Math.min(Math.max(ambil, 1), 50),
+    include: { steps: { orderBy: { ordinal: 'asc' } } },
+  })
+
+  if (baris.length === 0) {
+    console.log('\n  Belum ada rekaman jalan agent.\n')
+    await prisma.$disconnect()
+    return
+  }
+
+  const lines = baris.map((b) => ringkasRekaman(b))
+
+  // Ringkasan alasan berhenti: ini yang paling sering dicari. "Agent error"
+  // dan "langkah habis" punya penanganan yang sama sekali berbeda.
+  const hitung = new Map<string, number>()
+  for (const b of baris) {
+    const kunci = b.errorCode ?? 'JAWABAN_FINAL'
+    hitung.set(kunci, (hitung.get(kunci) ?? 0) + 1)
+  }
+  const ringkas = [...hitung.entries()].map(([alasan, n]) => `${alasan}: ${n}`).join(' · ')
+
+  box('OSDABOT — Jalan agent', lines)
+  console.log(`\n  ${ringkas}\n`)
+  await prisma.$disconnect()
+})
+
+/** Cari id AgentTask yang dimulai dengan prefix, lewat cast ke teks. */
+async function idYangMulaiDengan(prefix: string): Promise<string[]> {
+  const hasil = await prisma.$queryRaw<Array<{ id: string }>>`
+    SELECT id::text AS id
+    FROM "AgentTask"
+    WHERE id::text LIKE ${prefix + '%'}
+    ORDER BY "createdAt" DESC
+    LIMIT 5
+  `
+  return hasil.map((h) => h.id)
+}
+
+register('run:show', 'Detail satu jalan agent beserta langkah-langkahnya', async () => {
+  const { ringkasRekaman } = await import('../agent/run-recorder.js')
+  const args = parseArgs(process.argv.slice(3))
+  const id = args.id
+  if (!id) {
+    console.error('Pakai: pnpm osda run:show --id=<AgentTask id>')
+    await prisma.$disconnect()
+    process.exit(1)
+  }
+
+  // Identifier boleh disingkat seperti git: 8 karakter pertama sudah unik untuk
+  // ribuan baris, dan mengetik UUID penuh lewat terminal itu memalukan.
+  //
+  // Prisma tidak bisa menyaring UUID dengan `startsWith`. Postgres bisa lewat
+  // `::text`, tapi indeks UUID-nya jadi tidak terpakai kalau kolomnya di-cast.
+  // Karena ini CLI yang dijalankan manusia — bukan loop — kandidat diambil
+  // dengan cast lalu yang pertama diambil. Batasnya jelas dan cukup untuk
+  //pemeriksaan.
+  const baris =
+    id.length === 36
+      ? await prisma.agentTask.findUnique({
+          where: { id },
+          include: { steps: { orderBy: { ordinal: 'asc' } } },
+        })
+      : await (async () => {
+          const kandidat = await prisma.agentTask.findMany({
+            where: { id: { in: await idYangMulaiDengan(id) } },
+            include: { steps: { orderBy: { ordinal: 'asc' } } },
+          })
+          return kandidat[0] ?? null
+        })()
+
+  if (!baris) {
+    console.error(`Jalan agent tidak ditemukan: ${id}`)
+    await prisma.$disconnect()
+    process.exit(1)
+  }
+
+  const state = (baris.state ?? {}) as Record<string, unknown>
+  console.log('')
+  console.log(`  ${ringkasRekaman(baris)}`)
+  console.log(`  Percakapan : ${baris.conversationId ?? '-'}`)
+  console.log(`  Chat       : ${state.chatJid ?? '-'} ${state.isGroup ? '(grup)' : '(personal)'}`)
+  console.log(`  Actor      : ${baris.actorUserId ?? '-'}`)
+  console.log(`  Tool tersedia: ${(state.availableTools as string[] | undefined)?.length ?? 0}`)
+  console.log('')
+
+  if (baris.steps.length === 0) {
+    console.log('  (tidak ada langkah tercatat)')
+  }
+  for (const langkah of baris.steps) {
+    const tanda = langkah.error ? '!' : '.'
+    console.log(
+      `  ${tanda} ${String(langkah.ordinal).padStart(2)} ${langkah.description}` +
+        (langkah.error ? `  ← ${langkah.error}` : ''),
+    )
+  }
+  console.log('')
+
+  // Tool yang gagal di jalan ini sering jadi akar masalah.
+  const gagal = await prisma.toolExecution.findMany({
+    where: { taskId: baris.id, outcome: { not: 'success' } },
+    select: { toolName: true, errorCode: true, outcome: true },
+  })
+  if (gagal.length > 0) {
+    console.log('  Tool yang tidak berhasil:')
+    for (const g of gagal) console.log(`    ${g.toolName}: ${g.errorCode ?? g.outcome}`)
+    console.log('')
+  }
+
+  await prisma.$disconnect()
+})
+
+// ---------------------------------------------------------------------------
 // Mode aman — tombol darurat
 // ---------------------------------------------------------------------------
 
