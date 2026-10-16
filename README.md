@@ -15,7 +15,7 @@ pnpm db:migrate && pnpm db:seed && pnpm dev
 
 | | |
 |---|---|
-| Test | **686 lulus, 0 gagal** (14 live dilewati) |
+| Test | **687 lulus, 0 gagal** (14 live dilewati) |
 | Tool | 15 |
 | Skill | 3 |
 | Permission | 50 |
@@ -161,9 +161,13 @@ Rinciannya: [docs/AUDIT.md](./docs/AUDIT.md)
 
 Tidak ada pengujian otomatis yang mengirim pesan WhatsApp sungguhan.
 
-**Yang sudah terverifikasi:** loop agent penuh — skill → pemilihan tool →
-eksekusi → balasan — diuji terhadap AI gateway sungguhan dengan 11 skenario.
-Lihat [docs/UJI-SMOKE.md](./docs/UJI-SMOKE.md).
+**Yang sudah terverifikasi:**
+
+- Loop agent penuh — skill → pemilihan tool → eksekusi → balasan — terhadap AI
+  gateway sungguhan, 11 skenario. [docs/UJI-SMOKE.md](./docs/UJI-SMOKE.md)
+- **Percakapan WhatsApp sungguhan end-to-end**: pesan nyata → agent →
+  `payment_create_charge` → persetujuan → charge BaturPay dengan QRIS
+  tercatat di PostgreSQL.
 
 ## Teknologi
 

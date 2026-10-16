@@ -35,6 +35,7 @@ Status memakai lima tingkat:
 | Skill registry | `TESTED` | Loader + validasi metadata |
 | AI provider | `VERIFIED` | **Diuji terhadap gateway sungguhan** |
 | Loop agent (skill → tool) | `VERIFIED` | **11 skenario live**, `docs/UJI-SMOKE.md` |
+| Percakapan WhatsApp live | `VERIFIED` | **Pesan nyata → persetujuan → charge BaturPay** |
 | Agent runtime | `TESTED` | Tool calling + batas loop |
 | Message pipeline | `TESTED` | Dedupe + rate limit + aktivasi grup |
 | Tool registry | `TESTED` | 49 tool, otorisasi per tool |
@@ -44,7 +45,7 @@ Status memakai lima tingkat:
 | WhatsApp pairing config | `VERIFIED` | Konfigurasi platform & kebijakan reconnect diperbaiki |
 | WhatsApp pairing blocker | `VERIFIED` | 429 rate-overlimit; guard sudah terbukti berfungsi |
 | **WhatsApp pairing** | `BLOCKED` | Menunggu cooldown server sebelum mencoba lagi |
-| **WhatsApp live** | `NOT VERIFIED` | Adapter ada, pairing belum selesai |
+
 | **BaturPay live** | `NOT VERIFIED` | Adapter ada, transaksi belum |
 | Scheduled reminders | `TESTED` | PostgreSQL sebagai sumber kebenaran |
 | Group linking | `TESTED` | CLI + tool, penemuan otomatis |
@@ -130,9 +131,9 @@ Setiap perintah **membaca kondisi nyata** dari database dan provider.
 
 | Yang diukur | Nilai |
 |---|---|
-| **Test total** | **686 lulus, 0 gagal** (14 live dilewati) |
+| **Test total** | **687 lulus, 0 gagal** (14 live dilewati) |
 | Unit | 462 lulus |
-| Integrasi | 217 lulus |
+| Integrasi | 218 lulus |
 | Live (opsional) | 14 test; **11 lulus** terhadap gateway sungguhan, sisanya dilewati |
 | Tool terdaftar | 49 |
 | Skill termuat | 11 |
