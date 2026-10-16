@@ -7,7 +7,15 @@ required_tools:
   - reminder_list
   - reminder_cancel
 required_permissions:
-  - tasks.read
+  # SEBELUMNYA: `tasks.read` — domain yang salah total.
+  #
+  # Ketiga tool di skill ini butuh `automation.*`, bukan `tasks.*`. Akibatnya
+  # skill ini dilewati untuk siapa pun yang punya izin pengingat tapi tidak punya
+  # izin tugas — dan percakapan "ingatkan besok jam 7" dijawab "fitur belum
+  # tersedia" padahal tool-nya terdaftar.
+  - automation.read
+  - automation.create
+  - automation.cancel
 contexts: [private, group]
 triggers:
   - ingatkan

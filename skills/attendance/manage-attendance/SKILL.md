@@ -40,11 +40,11 @@ harus dibuat lebih dulu dengan `attendance_create`.
 1. **Pastikan daftar yang dimaksud.**
    Kalau pengguna tidak menyebut daftar secara eksplisit, pakai daftar terakhir yang
    aktif di percakapan itu. Kalau belum pernah ada daftar di percakapan ini, cek
-   `attendance.list_events` untuk melihat yang terbaru.
+   `attendance_list_events` untuk melihat yang terbaru.
 
 2. **Jangan pernah mengarang anggota.**
    Setiap kali pengguna menyebut nama orang, WAJIB jalankan
-   `organization.search_members` lebih dulu.
+   `organization_search_members` lebih dulu.
 
 3. **Kalau nama ambigu — berhenti dan tanya.**
    Dua anggota bernama "Ibra" itu dua orang berbeda. Jangan pilih yang paling mirip.
@@ -68,7 +68,7 @@ harus dibuat lebih dulu dengan `attendance_create`.
 
 ## Yang tidak boleh dilakukan
 
-- Menambah entri ganda untuk anggota yang sama — `attendance.add_member` sudah
+- Menambah entri ganda untuk anggota yang sama — `attendance_add_member` sudah
   idempoten, tapi tetap periksa hasilnya.
 - Mengubah anggota lain saat hanya satu yang disebut.
 - Menghakimi alasan izin. Catat apa adanya.

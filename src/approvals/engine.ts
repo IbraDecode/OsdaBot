@@ -39,7 +39,27 @@ import { hashPayload, parseApprovalIntent, type ApprovalIntent } from './intent.
 const log = logger.child({ module: 'approvals' })
 
 /** Berapa lama persetujuan menunggu jawaban. Default 15 menit. */
-const TTL_MS = Number(process.env.APPROVAL_TTL_MS ?? 15 * 60 * 1000)
+/**
+ * Masa berlaku persetujuan.
+ *
+ * ── Kenapa tidak `Number(process.env...)` polos ──────────────────────────────
+ *
+ * `APPROVAL_TTL_MS=abc` → `NaN` → `expiresAt` jadi `Invalid Date` → pencarian
+ * `expiresAt: { gt: new Date() }` tidak pernah cocok. Efeknya: **semua
+ * persetujuan menggantung selamanya** — tidak bisa disetujui, tidak bisa
+ * kedaluwarsa, tidak ada error di boot. Satu typo di `.env` jadi outage
+ * senyap.
+ *
+ * Semua konfigurasi lain di repo lewat `src/config/env.ts` dengan Zod. Ini
+ * tidak boleh jadi pengecualian.
+ */
+const TTL_MS = Number.isFinite(Number(process.env.APPROVAL_TTL_MS))
+  ? Number(process.env.APPROVAL_TTL_MS)
+  : 15 * 60 * 1000
+
+if (!Number.isFinite(TTL_MS) || TTL_MS <= 0) {
+  log.error({ nilai: process.env.APPROVAL_TTL_MS }, 'APPROVAL_TTL_MS tidak valid, memakai bawaan 15 menit')
+}
 
 export interface ApprovalEngineDeps {
   prisma: PrismaClient
@@ -55,7 +75,26 @@ export interface ApprovalEngineDeps {
  * menyerahkan (toolName, payload) ke lapisan yang paham tool.
  */
 export interface ApprovalExecutor {
-  executeApproved(input: { toolName: string; payload: unknown; correlationId: string | null }): Promise<{
+  /**
+   * `approvalId` itu penting, bukan opsional.
+   *
+   * Dulu executor mencari sendiri baris approval yang cocok dari
+   * `(toolName, correlationId)`. Itu bermasalah: satu jalan agent bisa membuat
+   * **dua** approval untuk tool yang sama, jadi `findFirst` bisa mengembalikan
+   * baris yang salah — termasuk yang sudah dieksekusi. Pemanggil sudah tahu
+   * persis baris mana yang ia setujui, jadi menebak ulang itu murni sumber
+   * kesalahan.
+   *
+   * `organizationId` dipakai sebagai pagar: tanpa itu, pencarian bisa
+   * menjatuhkan payload milik organisasi lain.
+   */
+  executeApproved(input: {
+    toolName: string
+    payload: unknown
+    correlationId: string | null
+    approvalId?: string
+    organizationId?: string | null
+  }): Promise<{
     ok: boolean
     summary: string
   }>
@@ -251,10 +290,14 @@ export class ApprovalEngine implements ApprovalBroker {
     }
 
     try {
+      // `approvalId` dan `organizationId` diteruskan supaya executor tidak
+      // perlu menebak baris mana yang disetujui.
       const result = await executor.executeApproved({
         toolName: pending.actionType,
         payload: pending.payload,
         correlationId: pending.correlationId,
+        approvalId: pending.id,
+        organizationId: (pending as { organizationId?: string | null }).organizationId ?? null,
       })
       await this.say(chatJid, result.ok ? result.summary : `Gagal dijalankan: ${result.summary}`)
     } catch (error) {
@@ -282,11 +325,78 @@ export class ApprovalEngine implements ApprovalBroker {
     return result.count
   }
 
+  /**
+   * Kirim pesan sistem — dan **simpan** ke riwayat.
+   *
+   * ── Kenapa ini diubah ──────────────────────────────────────────────────────
+   *
+   * Dua hal rusak di versi lama, keduanya menutupi bug yang lebih dalam:
+   *
+   * 1. **Hasil pengiriman dibuang.** `sendText` tidak pernah melempar error;
+   *    kegagalan dikembalikan sebagai `{ status: 'failed' | 'unknown' }`
+   *    (`baileys-provider.ts` memanggil `mapSendError`, bukan `throw`). Versi
+   *    lama tidak memeriksanya, jadi pesan "Gagal menjalankan: sudah ada
+   *    permintaan lain yang menunggu" bisa gagal terkirim dan tidak ada yang
+   *    tahu. Bot diam, dan pengguna mengira tidak ada yang terjadi.
+   *
+   * 2. **Pesannya tidak masuk tabel `Message`.** Semua pesan bot lain disimpan
+   *    lewat `saveBotMessage`. Kalau approval tidak ikut, riwayat yang dibaca
+   *    agent pada pesan berikutnya berakhir begitu saja di "iya" tanpa balasan,
+   *    tanpa hasil, tanpa error — dan model tidak punya apa pun selain
+   *    mengarang. Itulah asal kalimat "masih ditahan oleh sistem persetujuan".
+   *
+   * Sekarang pesan approval menjadi bagian dari riwayat, jadi jawaban
+   * berikutnya punya dasar.
+   */
   private async say(chatJid: string, text: string): Promise<void> {
+    let terkirim: boolean
+
     try {
-      await this.deps.whatsapp.sendText(chatJid, text, { idempotencyKey: `approval-reply:${randomUUID().slice(0, 8)}` })
+      const hasil = await this.deps.whatsapp.sendText(chatJid, text, {
+        idempotencyKey: `approval-reply:${randomUUID()}`,
+      })
+      if (hasil.status === 'failed') {
+        log.error({ chatJid, errorCode: hasil.errorCode }, 'balasan persetujuan gagal terkirim')
+        terkirim = false
+      } else {
+        if (hasil.status === 'unknown') log.warn({ chatJid }, 'status pengiriman persetujuan tidak diketahui')
+        terkirim = true
+      }
     } catch (error) {
       log.warn({ err: error }, 'gagal mengirim balasan persetujuan')
+      terkirim = false
+    }
+
+    // Tetap disimpan walau gagal terkirim: menuntuk why bot yang menjawab
+    // berikutnya bisa tahu bahwa ada pesan yang sudah dicoba kirim.
+    if (terkirim || text.trim() !== '') await this.catatPesan(chatJid, text)
+  }
+
+  /** Simpan pesan sistem ke riwayat percakapan. Gagal menulis tidak boleh fatal. */
+  private async catatPesan(chatJid: string, text: string): Promise<void> {
+    try {
+      const { prisma } = await import('../database/client.js')
+      const percakapan = await prisma.conversation.findFirst({
+        where: { chatJid },
+        select: { id: true },
+        orderBy: { lastMessageAt: 'desc' },
+      })
+      if (!percakapan) return
+
+      await prisma.message.create({
+        data: {
+          conversationId: percakapan.id,
+          dedupeKey: `out:approval:${randomUUID()}`,
+          waMessageId: `out_${randomUUID().slice(0, 12)}`,
+          senderJid: 'me',
+          direction: 'out',
+          type: 'text',
+          text,
+          timestamp: new Date(),
+        },
+      })
+    } catch (error) {
+      log.warn({ err: error }, 'gagal menyimpan pesan persetujuan sebagai konteks')
     }
   }
 }

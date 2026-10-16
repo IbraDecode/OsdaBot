@@ -237,13 +237,30 @@ export class SkillRegistry {
           if (only === 'private' && options.isGroup) return false
         }
 
-        // Skill yang butuh izin yang tidak dimiliki dilewati — hanya hemat
-        // prompt; penolakan sebenarnya tetap di registry.
+        // Gate izin: skill dilewati kalau TIDAK ADA SATU pun izin yang
+        // dimiliki.
+        //
+        // Dulu `every` — logika "harus punya semua". Itu lebih ketat dari
+        // penyaringan tool, dan `schemasFor()` sudah memfilter tool per-izin
+        // sendiri. Jadi gate ini tidak menambah keamanan, hanya membuang
+        // kemampuan: bendahara yang punya `finance.read` tapi tidak
+        // `finance.create` kehilangan **seluruh** skill keuangan, termasuk
+        // kemampuan membaca tagihan yang memang boleh dia lakukan.
+        //
+        // Akibatnya yang muncul ke pengguna persis seperti ini:
+        //
+        //     "fitur menambah anggota belum tersedia"
+        //
+        // padahal `organization_create_member` ada di disk dan terdaftar.
+        //
+        // Dengan `some`, skill tetap terkirim kalau minimal satu tool-nya
+        // terjangkau, dan `schemasFor()` yang membatasi mana yang benar-benar
+        // boleh dipanggil.
         if (skill.metadata.requiredPermissions.length > 0) {
-          const punyaSemua = skill.metadata.requiredPermissions.every((permission) =>
+          const punyaSatu = skill.metadata.requiredPermissions.some((permission) =>
             options.allowedPermissions.has(permission),
           )
-          if (!punyaSemua) return false
+          if (!punyaSatu) return false
         }
 
         return true

@@ -69,6 +69,8 @@ export class ToolApprovalExecutor implements ApprovalExecutor {
     toolName: string
     payload: unknown
     correlationId: string | null
+    approvalId?: string
+    organizationId?: string | null
   }): Promise<{ ok: boolean; summary: string }> {
     const approval = await this.loadApproval(input)
     if (!approval) {
@@ -76,7 +78,15 @@ export class ToolApprovalExecutor implements ApprovalExecutor {
     }
 
     if (approval.executedAt) {
-      return { ok: true, summary: 'Tindakan itu sudah dijalankan sebelumnya.' }
+      // Dulu di sini `ok: true`. Itu menyatakan tindakan berhasil padahal tidak
+      // ada yang dijalankan — dan `AGENTS.md` melarang klaim sukses tanpa hasil
+      // tool yang mendukungnya.
+      //
+      // Yang lebih buruk: baris yang sebenarnya menunggu eksekusi (yang
+      // `loadApproval` salah pilih) tertinggal `APPROVED` dengan `executedAt`
+      // kosong selamanya. Tidak ada worker yang mengambilnya, jadi satu "iya"
+      // berikutnya tidak pernah memperbaiki apa pun.
+      return { ok: false, summary: 'Tindakan itu sudah dijalankan sebelumnya.' }
     }
 
     // Tanpa identitas, tidak boleh ada yang dieksekusi.
@@ -214,8 +224,27 @@ export class ToolApprovalExecutor implements ApprovalExecutor {
         chatJid: approval.chatJid ?? '',
         correlationId,
         outcome: 'failure',
-        errorCode: 'APPROVAL_EXECUTION_FAILED',
+        // Kode asli ikut disimpan. `APPROVAL_EXECUTION_FAILED` untuk semua tool
+        // membuat sinyal `TOOL_FAILURE_REPEAT` tidak informatif: monitoring
+        // melaporkan "gagal 3×" tanpa tahu itu konflik, izin, atau provider.
+        errorCode:
+          error && typeof error === 'object' && 'code' in error
+            ? String((error as { code: unknown }).code)
+            : 'APPROVAL_EXECUTION_FAILED',
         durationMs: Date.now() - mulai,
+      })
+
+      // Status TERMINAL.
+      //
+      // Dulu baris ini tetap `APPROVED` dengan `executedAt` kosong. Tidak ada
+      // yang mengambilnya selamanya: `tryHandleReply` cuma mencari `PENDING`,
+      // `expireStale()` juga cuma `PENDING`, dan tidak ada worker pemulihan.
+      // Satu kegagalan sementara — misalnya "sudah ada permintaan pembayaran
+      // lain yang menunggu" — membakar persetujuan itu permanen, dan
+      // satu-satunya jalan keluar adalah mengulang perintah dari awal.
+      await this.deps.prisma.approval.update({
+        where: { id: approval.id },
+        data: { status: 'FAILED' },
       })
 
       log.error({ tool: input.toolName, approvalId: approval.id, err: error }, 'gagal menjalankan tindakan')
@@ -235,13 +264,36 @@ export class ToolApprovalExecutor implements ApprovalExecutor {
   private async loadApproval(input: {
     toolName: string
     correlationId: string | null
+    approvalId?: string
+    organizationId?: string | null
   }): Promise<ApprovalRow | null> {
+    const pagarOrganisasi = input.organizationId ? { organizationId: input.organizationId } : {}
+
+    // 1. Baris yang tepat — kalau pemanggil menyebutkannya.
+    //
+    //    Jalur ini yang dipakai `ApprovalEngine`, karena engine sudah tahu baris
+    //    mana yang ia setujui. Tidak ada tebakan.
+    if (input.approvalId) {
+      const row = await this.deps.prisma.approval.findFirst({
+        where: { id: input.approvalId, status: 'APPROVED' },
+        select: SELECT,
+      })
+      if (row) return row as ApprovalRow
+    }
+
+    // 2. Pencarian per-correlationId.
+    //
+    //    WAJIB memfilter `executedAt: null`. Tanpa itu, `orderBy createdAt desc`
+    //    bisa mengembalikan approval yang SUDAH dijalankan, sementara yang
+    //    seharusnya dijalankan tertinggal menggantung.
     if (input.correlationId) {
       const row = await this.deps.prisma.approval.findFirst({
         where: {
           actionType: input.toolName,
           status: 'APPROVED',
+          executedAt: null,
           correlationId: input.correlationId,
+          ...pagarOrganisasi,
         },
         orderBy: { createdAt: 'desc' },
         select: SELECT,
@@ -249,8 +301,22 @@ export class ToolApprovalExecutor implements ApprovalExecutor {
       if (row) return row as ApprovalRow
     }
 
+    // 3. Tanpa organisasi yang diketahui, pencarian buta DITOLAK.
+    //
+    //    Versi lama memakai fallback tanpa filter organisasi sama sekali —
+    //    meaning payload milik satu organisasi bisa dieksekusi dengan konteks
+    //    organisasi lain. Belum terjangkau dari percakapan (karena
+    //    `registry.ts` selalu mengirim `correlationId`), tapi itu bom waktu:
+    //    begitu ada pemanggil kedua, itu jadi kebocoran lintas tenant.
+    if (!input.organizationId) return null
+
     const fallback = await this.deps.prisma.approval.findFirst({
-      where: { actionType: input.toolName, status: 'APPROVED', executedAt: null },
+      where: {
+        actionType: input.toolName,
+        status: 'APPROVED',
+        executedAt: null,
+        organizationId: input.organizationId,
+      },
       orderBy: { createdAt: 'desc' },
       select: SELECT,
     })

@@ -34,11 +34,11 @@ Menjaga data anggota tetap akurat dan bisa dicari, tanpa membuat data fiktif.
    Ekstrak nama dan kelas. Jangan menebak kelas kalau tidak tertulis.
 
 2. **Deteksi duplikasi sebelum menyimpan.**
-   `organization.search_members` untuk tiap nama. Kalau ada yang cocok, tanyakan
+   `organization_search_members` untuk tiap nama. Kalau ada yang cocok, tanyakan
    ke pengguna: ini orang yang sama atau berbeda.
 
 3. **Buat anggota satu per satu.**
-   Panggil `organization.create_member` tiap nama. Jangan satu tool untuk seluruh
+   Panggil `organization_create_member` tiap nama. Jangan satu tool untuk seluruh
    daftar — supaya kalau ada satu yang gagal, pengguna tahu yang mana.
 
 4. **Laporkan hasilnya jujur.**

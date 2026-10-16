@@ -179,11 +179,144 @@ describe('ToolApprovalExecutor', () => {
       toolName: 'whatsapp_send_message',
       payload: { text: 'halo' },
       correlationId: 'corr-1',
+      approvalId: 'apv-1',
+      organizationId: 'org-1',
+    })
+
+    // BUG REGRESSION: `ok` HARUS `false` di sini.
+    //
+    // Versi lama mengembalikan `ok: true` untuk approval yang sudah dieksekusi
+    // — menyatakan tindakan berhasil padahal tidak ada yang dijalankan.
+    // `AGENTS.md` melarang klaim sukses tanpa hasil tool yang mendukungnya.
+    //
+    // Dan efeknya bukan cuma kalimat yang salah: baris yang sebenarnya
+    // menunggu eksekusi tertinggal `APPROVED` + `executedAt` kosong selamanya,
+    // karena tidak ada worker yang mengambilnya.
+    expect(hasil.ok).toBe(false)
+    expect(hasil.summary).toContain('sudah dijalankan')
+    expect(dipanggil).toHaveLength(0)
+  })
+
+  it('BUG REGRESSION: mencari approval yang BENAR, bukan yang terbaru', async () => {
+    // Skenario nyata dari pemakaian: satu jalan agent membuat DUA approval
+    // untuk tool yang sama (model memanggil dua kali). Yang pertama dieksekusi.
+    // Lalu user menekan "iya" untuk yang kedua.
+    //
+    // `loadApproval` versi lama mencari `status: APPROVED` + correlationId yang
+    // sama dengan `orderBy createdAt desc` — TANPA memfilter `executedAt`.
+    // Jadi dia mengembalikan approval PERTAMA yang sudah dieksekusi, dan
+    // yang kedua menggantung tanpa pernah dijalankan.
+    const dipanggilPerApproval = new Map<string, number>()
+    const prismaPalsu = {
+      approval: {
+        findFirst: async (args: { where: Record<string, unknown> }) => {
+          const w = args.where
+          if (w.id === 'apv-menunggu') {
+            return {
+              id: 'apv-menunggu',
+              organizationId: 'org-1',
+              taskId: null,
+              requestedBy: 'user-1',
+              chatJid: '628@s.whatsapp.net',
+              payload: { text: 'yang benar' },
+              correlationId: 'corr-1',
+              status: 'APPROVED',
+              executedAt: null,
+            }
+          }
+          return {
+            id: 'apv-sudah',
+            organizationId: 'org-1',
+            taskId: null,
+            requestedBy: 'user-1',
+            chatJid: '628@s.whatsapp.net',
+            payload: { text: 'yang salah' },
+            correlationId: 'corr-1',
+            status: 'APPROVED',
+            executedAt: new Date(),
+          }
+        },
+        update: async (args: { where: { id: string }; data: Record<string, unknown> }) => {
+          dipanggilPerApproval.set(args.where.id, (dipanggilPerApproval.get(args.where.id) ?? 0) + 1)
+          return {}
+        },
+      },
+    }
+
+    const executor = new ToolApprovalExecutor({
+      prisma: prismaPalsu as never,
+      tools: {
+        catatEksekusiLuar: async () => {},
+        get: () => ({
+          name: 'whatsapp_send_message',
+          requiredPermissions: [],
+          execute: async (payload: unknown) => ({ text: (payload as { text: string }).text }),
+        }),
+      } as never,
+      authorization: { check: PERMINSI_BEBAS.check } as never,
+    })
+
+    const hasil = await executor.executeApproved({
+      toolName: 'whatsapp_send_message',
+      payload: { text: 'yang benar' },
+      correlationId: 'corr-1',
+      approvalId: 'apv-menunggu',
+      organizationId: 'org-1',
     })
 
     expect(hasil.ok).toBe(true)
-    expect(hasil.summary).toContain('sudah dijalankan')
-    expect(dipanggil).toHaveLength(0)
+    // Baris yang BENAR yang ditandai terEksekusi, bukan yang sudah selesai.
+    expect(dipanggilPerApproval.has('apv-menunggu')).toBe(true)
+    expect(dipanggilPerApproval.has('apv-sudah')).toBe(false)
+  })
+
+  it('BUG REGRESSION: TIDAK jatuh ke approval organisasi lain', async () => {
+    // Tanpa pagar `organizationId`, pencarian buta bisa menjatuhkan payload
+    // milik organisasi lain lalu menjalankannya dengan konteks yang salah.
+    const prismaPalsu = {
+      approval: {
+        findFirst: async () => null,
+        update: async () => ({}),
+      },
+    }
+    const executor = new ToolApprovalExecutor({
+      prisma: prismaPalsu as never,
+      tools: { catatEksekusiLuar: async () => {}, get: () => undefined } as never,
+      authorization: { check: PERMINSI_BEBAS.check } as never,
+    })
+
+    // Tanpa `organizationId`, pencarian buta DITOLAK — lebih aman daripada
+    // menjalankan payload milik orang lain.
+    const tanpaOrg = await executor.executeApproved({
+      toolName: 'whatsapp_send_message',
+      payload: { text: 'x' },
+      correlationId: null,
+    })
+    expect(tanpaOrg.ok).toBe(false)
+
+    // Dengan `organizationId`, pencarian tetap terjadi — tapi terkurung.
+    let dipanggilDenganFilter = false
+    const prismaTerfilter = {
+      approval: {
+        findFirst: async (args: { where: Record<string, unknown> }) => {
+          dipanggilDenganFilter = args.where.organizationId === 'org-1'
+          return null
+        },
+        update: async () => ({}),
+      },
+    }
+    const executor2 = new ToolApprovalExecutor({
+      prisma: prismaTerfilter as never,
+      tools: { catatEksekusiLuar: async () => {}, get: () => undefined } as never,
+      authorization: { check: PERMINSI_BEBAS.check } as never,
+    })
+    await executor2.executeApproved({
+      toolName: 'whatsapp_send_message',
+      payload: { text: 'x' },
+      correlationId: null,
+      organizationId: 'org-1',
+    })
+    expect(dipanggilDenganFilter, 'pencarian approval tidak difilter organisasi').toBe(true)
   })
 
   it('menolak kalau baris approval tidak ada', async () => {
@@ -213,7 +346,8 @@ describe('ToolApprovalExecutor', () => {
     expect(dipanggil).toHaveLength(0)
   })
 
-  it('menyelubungi kegagalan tool tanpa melempar error keluar', async () => {
+  it('kegagalan tool menandai approval FAILED, bukan menggantung', async () => {
+    const updateTercatat: Array<{ where: { id: string }; data: Record<string, unknown> }> = []
     const { executor } = buatDeps({})
     const prismaGagal = {
       approval: {
@@ -228,7 +362,10 @@ describe('ToolApprovalExecutor', () => {
           status: 'APPROVED',
           executedAt: null,
         }),
-        update: async () => ({}),
+        update: async (args: { where: { id: string }; data: Record<string, unknown> }) => {
+          updateTercatat.push(args)
+          return {}
+        },
       },
     }
 
@@ -254,9 +391,23 @@ describe('ToolApprovalExecutor', () => {
       toolName: 'x',
       payload: {},
       correlationId: null,
+      // Tanpa ini, pencarian buta ditolak dan test mengukur hal yang salah.
+      organizationId: 'org-1',
+      approvalId: 'apv-1',
     })
 
     expect(hasil.ok).toBe(false)
     expect(hasil.summary).toContain('database sedang mati')
+
+    // BUG REGRESSION: kegagalan harus meninggalkan status TERMINAL.
+    //
+    // Dulu baris tetap `APPROVED` dengan `executedAt` kosong. Tidak ada yang
+    // mengambilnya: `tryHandleReply` cuma cari `PENDING`, `expireStale()` juga
+    // cuma `PENDING`, dan tidak ada worker pemulihan. Satu kegagalan sementara
+    // membakar persetujuan itu selamanya.
+    const updateTerakhir = updateTercatat.at(-1)
+    expect(updateTerakhir?.data, 'kegagalan tidak menandai status terminal').toMatchObject({
+      status: 'FAILED',
+    })
   })
 })

@@ -51,6 +51,16 @@ enum ResourceRiskLevel {
 enum ApprovalStatus {
   PENDING
   APPROVED
+  /// Disetujui tapi gagal dijalankan. Terminal — bukan menunggu apa pun lagi.
+  ///
+  /// Tanpa status ini, kegagalan tool membuat baris `APPROVED` dengan
+  /// `executedAt` kosong yang tidak pernah diambil siapa pun: bukan
+  /// `tryHandleReply` (cuma mencari PENDING), bukan `expireStale()` (cuma
+  /// PENDING), dan tidak ada worker pemulihan. Satu gangguan transien —
+  /// misalnya "sudah ada permintaan pembayaran lain yang menunggu" — membakar
+  /// approval itu selamanya, dan pengguna tidak punya jalan lain kecuali
+  /// mengulang seluruh perintahnya dari awal.
+  FAILED
   REJECTED
   EXPIRED
   CANCELLED
