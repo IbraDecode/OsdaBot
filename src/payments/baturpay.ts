@@ -347,6 +347,31 @@ export class BaturPayAdapter {
     return `${this.baseUrl}/v1/transactions/${encodeURIComponent(orderId)}/qr`
   }
 
+  /**
+   * Tautan QRIS untuk satu transaksi.
+   *
+   * Deterministik dari `orderId` — tidak perlu memanggil penyedia. Dipakai
+   * `payment_list`, yang sudah tahu transaksi mana yang ada.
+   *
+   * Untuk kasus "yang mana?", pakai `qrUrlUntukOrder()`: dia menanyakan
+   * database dulu, jadi transaksi yang sudah dihapus tidak menghasilkan tautan
+   * yang berakhir di 404.
+   */
+  qrUrlUntuk(orderId: string): string {
+    return this.qrUrl(orderId)
+  }
+
+  /** Sama seperti di atas, tapi hanya kalau transaksi benar-benar ada di database. */
+  async qrUrlUntukOrder(orderId: string): Promise<string | null> {
+    const payment = await this.prisma.payment.findFirst({
+      where: { providerReference: orderId },
+      select: { metadata: true },
+    })
+    const dariMetadata = (payment?.metadata as { qrisUrl?: unknown } | undefined)?.qrisUrl
+    if (typeof dariMetadata === 'string' && dariMetadata !== '') return dariMetadata
+    return payment ? this.qrUrl(orderId) : null
+  }
+
 /**
  * Daftar transaksi dari penyedia.
  *

@@ -145,7 +145,11 @@ export class MessageHandler {
       buildMediaTools({ whatsapp: this.deps.whatsapp, knowledge: this.deps.knowledge }) as never,
     )
     this.deps.tools.registerAll(
-      buildPaymentTools({ payments: this.deps.payments, identity: this.deps.identity }) as never,
+      buildPaymentTools({
+      payments: this.deps.payments,
+      identity: this.deps.identity,
+      whatsapp: this.deps.whatsapp,
+    }) as never,
     )
     this.deps.tools.registerAll(
       buildGroupTools({ groups: this.deps.groups, whatsapp: this.deps.whatsapp }) as never,

@@ -28,6 +28,20 @@ import type { IdentityEngine } from '../identity/resolver.js'
 export interface PaymentToolsDeps {
   payments: BaturPayAdapter
   identity: IdentityEngine
+  /**
+   * Untuk mengirim gambar QRIS.
+   *
+   * Wajib, bukan opsional: tanpa ini pengguna yang bertanya "kasi gambarnya"
+   * hanya bisa menerima tautan teks, padahal `sendImage` sudah ada di provider
+   * dan tidak pernah dipakai tool mana pun.
+   */
+  whatsapp: {
+    sendImage: (
+      chatJid: string,
+      image: { url: string; caption?: string },
+      options?: { idempotencyKey?: string },
+    ) => Promise<{ status: string; providerMessageId: string | null }>
+  }
 }
 
 /** Nominal rupiah bulat. */
@@ -36,7 +50,7 @@ const nominal = z
   .describe('Nominal RUPIAH bulat, boleh "25.000" atau 25000. Tidak ada pecahan.')
 
 export function buildPaymentTools(deps: PaymentToolsDeps): Array<ToolDefinition<never, never>> {
-  const { payments, identity } = deps
+  const { payments, identity, whatsapp } = deps
 
   const createCharge: ToolDefinition<
     {
@@ -232,13 +246,27 @@ export function buildPaymentTools(deps: PaymentToolsDeps): Array<ToolDefinition<
         throw new ToolError('NOT_FOUND', `Transaksi "${input.orderId}" tidak ditemukan di penyedia.`)
       }
 
+      // QRIS dikembalikan sebagai tautan TEKS.
+      //
+      // URL-nya diturunkan dari `orderId` dan selalu tersedia — tidak perlu
+      // memanggil penyedia lagi. Versi pertama tool ini tidak mengembalikannya,
+      // jadi saat pengguna bertanya "mana linknya", bot menjawab jujur bahwa
+      // tautannya tidak ada, padahal ada di `Payment.metadata`.
+      //
+      // Bot itu tidak berbohong: ia melaporkan tepat apa yang tool berikan. Yang
+      // tidak lengkap adalah tool-nya.
+      const qrisUrl = await payments.qrUrlUntukOrder(input.orderId)
+
       return {
         orderId: input.orderId,
         status: hasil.status,
         amount: hasil.amount,
         amountText: `Rp ${formatAmount(hasil.amount)}`,
         settledAt: hasil.settledAt,
+        qrisUrl,
         interpretation: interpretasi(hasil.status),
+        // Disampaikan eksplisit supaya model tidak menebak-nebak bentuk link.
+        qrTersedia: qrisUrl !== null,
       }
     },
   }
@@ -278,13 +306,99 @@ export function buildPaymentTools(deps: PaymentToolsDeps): Array<ToolDefinition<
           interpretation: interpretasi(row.status),
           invoiceNumber: row.invoiceNumber,
           createdAt: row.createdAt.toISOString().slice(0, 10),
+          //。见 `payment_check_status`: tautan QRIS diturunkan dari orderId, dan
+          // tanpa ini pengguna harus bertanya satu per satu.
+          qrisUrl: payments.qrUrlUntuk(row.orderId),
         })),
         message: `${rows.length} pembayaran${status ? ` dengan status ${status}` : ''}.`,
       }
     },
   }
 
-  return [createCharge, checkStatus, list] as never
+  /**
+   * Kirim gambar QRIS ke percakapan tempat perintah berasal.
+   *
+   * ── Kenapa perlu tool terpisah ────────────────────────────────────────────
+   *
+   * `WhatsAppProvider.sendImage` sudah ada sejak awal dan **tidak pernah dipakai
+   * tool mana pun**. Akibatnya permintaan "kasi gambar QRIS-nya" tidak bisa
+   * dipenuhi sama sekali — bukan karena datanya tidak ada, tapi karena tidak ada
+   * jalan untuk mengirimnya.
+   *
+   * Tautan teks sudah dikembalikan `payment_check_status`; yang ini menutup
+   * sisanya.
+   *
+   * ── Tujuan hanya percakapan asal ──────────────────────────────────────────
+   *
+   * Tidak ada parameter `to`. QRIS menautkan orang ke tagihan tertentu, jadi
+   * meneruskannya ke nomor yang salah berarti orang yang salah bisa membayar tagihan
+   * yang bukan miliknya. Kalau memang perlu dikirim ke orang lain, itu lewat
+   * `whatsapp_send_message` yang butuh persetujuan — dan saat itu terlihat.
+   */
+  const sendQris: ToolDefinition<{ orderId: string; caption?: string }, unknown> = {
+    name: 'payment_send_qris',
+    description:
+      'Kirim gambar QRIS ke percakapan ini supaya pengguna bisa memindai. ' +
+      'Pakai kalau pengguna bilang "kasih gambarnya", "tampilkan QR-nya", atau "gimana cara bayarnya" — ' +
+      'bukan saat pengguna hanya minta status. ' +
+      'Hanya untuk orderId yang sudah dibuat di percakapan atau organisasi ini.',
+    inputSchema: z
+      .object({
+        orderId: z.string().max(64).describe('Kode order dari payment_create_charge atau payment_check_status.'),
+        caption: z
+          .string()
+          .max(200)
+          .optional()
+          .describe('Teks singkat di bawah gambar, mis. "Rp 25.000 — iuran Agustus". Default: cukup sebut nominalnya.'),
+      })
+      .strict() as never,
+    requiredPermissions: [PERMISSIONS.FINANCE_READ],
+    riskLevel: 'LOW',
+    /**
+     * Tidak butuh persetujuan.
+     *
+     * Berbeda dengan `document_send`, yang bisa mengirim ke orang lain. Di sini
+     * tujuan **hanya** chat yang memintanya — pihak ketiga tidak pernah
+     * terlibat, jadi persetujuan hanya menambah satu putaran bolak-balik untuk
+     * hal yang memang baru saja diminta orang tersebut.
+     */
+    requiresApproval: false,
+    async execute(input, context) {
+      if (!payments.isConfigured) {
+        throw new ToolError('PROVIDER_UNAVAILABLE', 'Pembayaran otomatis belum dikonfigurasi di server ini.')
+      }
+      if (!context.chatJid) {
+        throw new ToolError('VALIDATION_FAILED', 'Tidak tahu ke mana harus dikirim — konteks percakapan kosong.')
+      }
+
+      const url = await payments.qrUrlUntukOrder(input.orderId)
+      if (!url) {
+        throw new ToolError(
+          'NOT_FOUND',
+          `Transaksi "${input.orderId}" tidak ditemukan di sini, jadi tidak ada QRIS untuk dikirim. ` +
+            'Jangan membuat transaksi baru hanya karena yang ini hilang — tanyakan dulu ke pengguna.',
+        )
+      }
+
+      const terkirim = await whatsapp.sendImage(
+        context.chatJid,
+        { url, ...(input.caption ? { caption: input.caption } : {}) },
+        { idempotencyKey: `qris:${input.orderId}` },
+      )
+
+      return {
+        orderId: input.orderId,
+        qrisUrl: url,
+        sentTo: context.chatJid,
+        deliveryStatus: terkirim.status,
+        message:
+          `Gambar QRIS untuk ${input.orderId} dikirim ke percakapan ini (${terkirim.status}). ` +
+          'Nominal dan status tagihan tidak ikut berubah hanya karena gambar dikirim.',
+      }
+    },
+  }
+
+  return [createCharge, checkStatus, list, sendQris] as never
 }
 
 /**
