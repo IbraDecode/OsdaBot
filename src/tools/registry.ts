@@ -353,6 +353,64 @@ export class ToolRegistry {
     return bagian.join('\n')
   }
 
+  /**
+   * Catat eksekusi yang terjadi DI LUAR `execute()` — yaitu lewat approval.
+   *
+   * ── Kenapa ini perlu ───────────────────────────────────────────────────────
+   *
+   * `ToolApprovalExecutor` memanggil `definition.execute` **langsung** untuk
+   * membedakan "disetujui lalu dieksekusi" dari "menunggu persetujuan". Konsekuensinya
+   * jalur itu melewati `ToolRegistry.execute` — dan `recordExecution` tinggal di
+   * sana.
+   *
+   * Artinya: **setiap tindakan yang butuh persetujuan tidak pernah masuk
+   * `ToolExecution`.** Dan itu bukan detail kecil, karena yang butuh persetujuan
+   * justru tindakan paling berisiko:
+   *
+   *   `payment_create_charge`, `document_send`, `whatsapp_send_message`,
+   *   `group_link`, `task_assign`
+   *
+   * Ditemukan lewat pemakaian nyata: `pnpm osda run:list` menunjukkan
+   * `payment_create_charge` dijalankan, tapi `ToolExecution` tidak punya satu baris
+   * pun dengan awalan `payment_`.
+   *
+   * Akibatnya `OrganizationSignal` untuk `TOOL_FAILURE_REPEAT` **tidak pernah
+   * melihat** kegagalan di tool-tool itu. Monitoring buta tepat pada tindakan yang
+   * paling perlu dipantau.
+   */
+  async catatEksekusiLuar(params: {
+    toolName: string
+    input: unknown
+    actorUserId: string | null
+    organizationId: string | null
+    conversationId: string | null
+    taskId: string | null
+    chatJid: string
+    correlationId: string
+    outcome: 'success' | 'failure'
+    errorCode?: string | null
+    durationMs?: number
+  }): Promise<void> {
+    await this.recordExecution(
+      {
+        actorUserId: params.actorUserId,
+        organizationId: params.organizationId,
+        conversationId: params.conversationId,
+        taskId: params.taskId,
+        chatJid: params.chatJid,
+        senderJid: params.chatJid,
+        correlationId: params.correlationId,
+        timezone: '',
+        authorization: undefined as never,
+      },
+      params.toolName,
+      params.input,
+      params.outcome,
+      params.errorCode ?? undefined,
+      params.durationMs,
+    )
+  }
+
   /** Catat eksekusi tool untuk audit trail & analisis kualitas. */
   private async recordExecution(
     context: ToolExecutionContext,

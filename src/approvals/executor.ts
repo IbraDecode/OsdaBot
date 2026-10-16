@@ -145,6 +145,23 @@ export class ToolApprovalExecutor implements ApprovalExecutor {
       }
     }
 
+    const correlationId = approval.correlationId ?? `approval:${approval.id}`
+    const mulai = Date.now()
+
+    // `Approval` tidak punya `conversationId` — percakapan ditrack lewat
+    // `chatJid`, dan `correlationId` sudah menautkannya ke jalan agent yang
+    // meminta persetujuan.
+    const jejak = {
+      toolName: input.toolName,
+      input: approval.payload,
+      actorUserId: approval.requestedBy,
+      organizationId: approval.organizationId,
+      conversationId: null,
+      taskId: approval.taskId,
+      chatJid: approval.chatJid ?? '',
+      correlationId,
+    } as const
+
     try {
       const data = await definition.execute(approval.payload as never, {
         actorUserId: approval.requestedBy,
@@ -153,9 +170,28 @@ export class ToolApprovalExecutor implements ApprovalExecutor {
         taskId: approval.taskId,
         chatJid: approval.chatJid ?? '',
         senderJid: approval.chatJid ?? '',
-        correlationId: approval.correlationId ?? `approval:${approval.id}`,
+        correlationId,
         timezone: this.deps.defaultTimezone ?? 'Asia/Makassar',
         authorization: this.deps.authorization,
+      })
+
+      // Jalur ini melewati `ToolRegistry.execute`, jadi pencatatan di sana tidak
+      // pernah jalan. Tanpa baris di sini, `payment_create_charge` dan sejenisnya
+      // tidak akan pernah muncul di `ToolExecution` — dan monitoring tidak akan
+      // pernah melihat kegagalannya.
+      await this.deps.tools.catatEksekusiLuar({
+        toolName: input.toolName,
+        input: approval.payload,
+        actorUserId: approval.requestedBy,
+        organizationId: approval.organizationId,
+        // `Approval` tidak punya `conversationId` — percakapan ditrack lewat
+        // `chatJid`, dan `correlationId` sudah ada untuk menautkan ke jalan agent.
+        conversationId: null,
+        taskId: approval.taskId,
+        chatJid: approval.chatJid ?? '',
+        correlationId,
+        outcome: 'success',
+        durationMs: Date.now() - mulai,
       })
 
       await this.deps.prisma.approval.update({
@@ -166,6 +202,22 @@ export class ToolApprovalExecutor implements ApprovalExecutor {
       log.info({ tool: input.toolName, approvalId: approval.id }, 'tindakan disetujui berhasil dijalankan')
       return { ok: true, summary: this.summarize(input.toolName, data) }
     } catch (error) {
+      await this.deps.tools.catatEksekusiLuar({
+        toolName: input.toolName,
+        input: approval.payload,
+        actorUserId: approval.requestedBy,
+        organizationId: approval.organizationId,
+        // `Approval` tidak punya `conversationId` — percakapan ditrack lewat
+        // `chatJid`, dan `correlationId` sudah ada untuk menautkan ke jalan agent.
+        conversationId: null,
+        taskId: approval.taskId,
+        chatJid: approval.chatJid ?? '',
+        correlationId,
+        outcome: 'failure',
+        errorCode: 'APPROVAL_EXECUTION_FAILED',
+        durationMs: Date.now() - mulai,
+      })
+
       log.error({ tool: input.toolName, approvalId: approval.id, err: error }, 'gagal menjalankan tindakan')
       return {
         ok: false,

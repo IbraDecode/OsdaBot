@@ -336,3 +336,65 @@ describe('alur persetujuan lewat handler', () => {
     expect(jejak!.reasonCode).toBe('APPROVAL_PENDING')
   }, 60_000)
 })
+
+/**
+ * Jejak eksekusi lewat approval.
+ *
+ * Jalur ini memanggil `definition.execute` **langsung**, bukan lewat
+ * `ToolRegistry.execute` — jadi `recordExecution` di registry tidak pernah
+ * jalan. Temuannya dari pemakaian nyata: `pnpm osda run:list` menunjukkan
+ * `payment_create_charge` dijalankan, tapi `ToolExecution` tidak punya satu baris
+ * pun dengan awalan `payment_`.
+ *
+ * Akibatnya `OrganizationSignal` untuk `TOOL_FAILURE_REPEAT` buta terhadap tool
+ * yang paling berisiko: `payment_create_charge`, `document_send`,
+ * `whatsapp_send_message`, `group_link`.
+ */
+describe('jejak eksekusi lewat persetujuan', () => {
+  it('BUG REGRESSION: tool yang disetujui TERCATAT di ToolExecution', async () => {
+    await bersihkan()
+
+    const correlationId = `jejak-${Date.now()}`
+
+    // Minta persetujuan lewat registry (menjadi PENDING, tidak dieksekusi).
+    await app.tools.execute(
+      'whatsapp_send_message',
+      { to: CHAT, text: `jejak ${correlationId}` },
+      {
+        actorUserId: PRIBADI,
+        organizationId: ORG_ID,
+        conversationId: null,
+        taskId: null,
+        chatJid: CHAT,
+        senderJid: CHAT,
+        correlationId,
+        timezone: 'Asia/Makassar',
+        authorization: app.authorization,
+      },
+    )
+
+    const approval = await prisma.approval.findFirst({
+      where: { organizationId: ORG_ID, status: 'PENDING' },
+      orderBy: { createdAt: 'desc' },
+    })
+    expect(approval).not.toBeNull()
+
+    // Setujui lewat balasan chat — jalur yang sama dengan pemakaian nyata, dan
+    // jalur yang tidak lewat `registry.execute`.
+    terkirim = []
+    const balasan = await app.approvals.tryHandleReply({ text: 'iya', chatJid: CHAT, actorUserId: PRIBADI })
+    expect(balasan).toBe('approve')
+
+    const jejak = await prisma.toolExecution.findMany({
+      where: { correlationId, toolName: 'whatsapp_send_message' },
+      select: { outcome: true, actorUserId: true, organizationId: true },
+    })
+
+    expect(jejak, `tidak ada ToolExecution untuk correlationId ${correlationId}`).toHaveLength(1)
+    expect(jejak[0]!.outcome).toBe('success')
+    expect(jejak[0]!.actorUserId).toBe(PRIBADI)
+    expect(jejak[0]!.organizationId).toBe(ORG_ID)
+
+    await bersihkan()
+  }, 120_000)
+})
