@@ -211,10 +211,17 @@ describe('umur dijalankan, bukan disimpan', () => {
   it('BUG REGRESSION: langkah ikut terhapus bersama induknya', async () => {
     // Kalau langkahnya tertinggal, `AgentStep` jadi baris yatim yang tidak
     // pernah ditanyakan dan tidak pernah bisa dijelaskan.
+    //
+    // Ini **satu-satunya** tempat yang menjaga Cascade-nya, dan tempat itu
+    // adalah kolomnya di schema: `AgentStep.task` punya `onDelete: Cascade`.
+    // Kode penghapusan tidak melakukan apa-apa untuk ini — dan pernah
+    // mencoba, sebelum ketahuan bahwa cascade sudah menanganinya. Test ini
+    // ada supaya mengubah definisi kolomnya ketahuan.
     await seedAgentTask(hariLalu(60))
     expect(await prisma.agentStep.count({ where: { description: { startsWith: 'langkah uji' } } })).toBe(2)
 
     await service().jalankan()
+
     expect(await prisma.agentStep.count({ where: { description: { startsWith: 'langkah uji' } } })).toBe(0)
   })
 

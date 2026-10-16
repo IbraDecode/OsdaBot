@@ -25,16 +25,18 @@ Status memakai lima tingkat:
 | Task service | `TESTED` | 33 test integrasi, siklus & lintas-organisasi ditolak |
 | Safe mode | `TESTED` | 12 test, bertahan melewati restart, 4 gerbang |
 | Rekaman agent | `TESTED` | 10 test, langkah + alasan berhenti |
+| Retensi data | `TESTED` | 12 test; 25 tabel bisnis mustahil tersentuh |
 | Payment adapter | `TESTED` | 28 test, idempotensi + verifikasi webhook |
 | Safe mode | `TESTED` | 12 test, bertahan melewati restart, 4 gerbang |
 | Rekaman agent | `TESTED` | 10 test, langkah + alasan berhenti |
+| Retensi data | `TESTED` | 12 test; 25 tabel bisnis mustahil tersentuh |
 | Skill registry | `TESTED` | Loader + validasi metadata |
 | AI provider | `VERIFIED` | **Diuji terhadap gateway sungguhan** |
 | Agent runtime | `TESTED` | Tool calling + batas loop |
 | Message pipeline | `TESTED` | Dedupe + rate limit + aktivasi grup |
 | Tool registry | `TESTED` | 49 tool, otorisasi per tool |
 | HTTP server | `TESTED` | `/health`, `/ready` jalan |
-| CLI | `IMPLEMENTED` | 29 perintah, membaca data nyata |
+| CLI | `IMPLEMENTED` | 31 perintah, membaca data nyata |
 | WhatsApp handshake | `VERIFIED` | Noise handshake berhasil, QR & pairing code dibuat |
 | WhatsApp pairing config | `VERIFIED` | Konfigurasi platform & kebijakan reconnect diperbaiki |
 | WhatsApp pairing blocker | `VERIFIED` | 429 rate-overlimit; guard sudah terbukti berfungsi |
@@ -126,9 +128,9 @@ Setiap perintah **membaca kondisi nyata** dari database dan provider.
 
 | Yang diukur | Nilai |
 |---|---|
-| **Test total** | **657 lulus, 0 gagal** (3 skipped) |
+| **Test total** | **669 lulus, 0 gagal** (3 skipped) |
 | Unit | 462 lulus |
-| Integrasi | 188 lulus |
+| Integrasi | 200 lulus |
 | Live (opsional) | 10 lulus dengan `RUN_LIVE_TESTS=true` |
 | Tool terdaftar | 49 |
 | Skill termuat | 11 |

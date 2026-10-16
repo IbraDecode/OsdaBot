@@ -1,6 +1,6 @@
 # Audit Kemampuan
 
-Status: **IMPLEMENTED** · **TESTED** (657 test lulus, 0 gagal)
+Status: **IMPLEMENTED** · **TESTED** (669 test lulus, 0 gagal)
 
 `tests/integration/capability-audit.test.ts`
 
@@ -154,8 +154,8 @@ Yang **tidak** bisa diselesaikan dengan menulis dokumentasi:
 |---|---|---|
 | `ActiveTask` belum dipakai | Menyusun kebutuhan lewat percakapan belum ada. | Utang |
 | `WorkflowRun` belum dipakai | Tidak ada alur kerja otomatis. | Utang |
-| `AgentTask` tanpa retensi | Rekaman menumpuk tanpa pernah dibersihkan. | Utang |
-| Mode aman tanpa kedaluwarsa | Yang lupa dimatikan mematikan bot selamanya. | Utang |
+| `AgentTask` tanpa retensi | Rekaman menumpuk tanpa pernah dibersihkan. | **Dibayar** |
+| Mode aman tanpa kedaluwarsa | Bot diam lama tak terdeteksi. | **Dibayar** (melalui `/ready`) |
 | Monitoring belum ada | Tidak ada deteksi untuk percakapan yang memburuk. | Utang |
 | `system.safe_mode` tidak ada mekanismenya | Tidak ada tombol darurat saat ada gangguan. | **Dibayar** |
 | `IdempotencyKey` belum dipakai | Nomor dokumen bisa bentrok saat bersamaan. | **Dibayar** |

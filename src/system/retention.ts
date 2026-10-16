@@ -356,21 +356,20 @@ export class RetentionService {
     if (ids.length === 0) return 0
 
     switch (tabel) {
-      case 'AgentTask': {
-        // Anak dihapus lebih dulu dan eksplisit.
+      case 'AgentTask':
+        // Tidak ada penghapusan `AgentStep` eksplisit di sini.
         //
-        // `AgentStep.task` punya `onDelete: Cascade` jadi cascade cukup —
-        // tapi bergantung padanya membuat penghapusan lebih sulit dibuktikan
-        // benar. Satu baris eksplisit lebih murah daripada menebak.
-        const langkah = await this.prisma.agentStep.findMany({
-          where: { taskId: { in: ids } },
-          select: { id: true },
-        })
-        if (langkah.length > 0) {
-          await this.prisma.agentStep.deleteMany({ where: { id: { in: langkah.map((l) => l.id) } } })
-        }
+        // Versi pertama menghapus anaknya lebih dulu dengan "`Andalkan cascade
+        //` lebih sulit dibuktikan benar`". Setelah diuji, ternyata cascade
+        // `AgentStep.task` sudah menanganinya dengan benar — test
+        // "langkah ikut terhapus bersama induknya" lulus **dengan dan tanpa**
+        // kode manual itu.
+        //
+        // Jadi kode manualnya dihapus: tidak menambah jaminan apa pun, hanya
+        // satu query dan satu tempat lagi yang bisa salah. Yang sekarang
+        // menjaga Cascade adalah definisi kolomnya di schema, dan test yang
+        // memverifikasinya.
         return (await this.prisma.agentTask.deleteMany({ where: { id: { in: ids } } })).count
-      }
       case 'AgentStep':
         return (await this.prisma.agentStep.deleteMany({ where: { id: { in: ids } } })).count
       case 'ToolExecution':
