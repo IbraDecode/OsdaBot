@@ -15,7 +15,7 @@ pnpm db:migrate && pnpm db:seed && pnpm dev
 
 | | |
 |---|---|
-| Test | **686 lulus, 0 gagal** |
+| Test | **686 lulus, 0 gagal** (14 live dilewati) |
 | Tool | 15 |
 | Skill | 3 |
 | Permission | 50 |
@@ -133,6 +133,7 @@ Yang mana ya?
 - **Rekaman agent** — langkah, tool, alasan berhenti; bisa ditanyakan
 - **Retensi data** — daftar putih; data bisnis mustahil tersentuh
 - **Monitoring** — pola lintas-peristiwa; saran dibedakan dari fakta
+- **Uji smoke live** — 11 skenario lewat gateway sungguhan, bukan tiruan
 - **Grup WhatsApp** — tautan per grup, penemuan otomatis saat boot
 - **Lampiran** — unduh media, batas 15 MB
 
@@ -152,12 +153,17 @@ Rinciannya: [docs/AUDIT.md](./docs/AUDIT.md)
 
 ## Yang belum terverifikasi
 
-- **Pairing WhatsApp live** — adapter ada, belum diuji dengan nomor nyata
+- **Pairing WhatsApp live** — sesi terhubung, tapi belum ada pesan dari orang
+  nyata yang diproses
 - **Pengiriman pesan live** — semua test memakai provider tiruan
 - **BaturPay live** — logika terverifikasi dari dokumentasi resmi, transaksi
   belum
 
 Tidak ada pengujian otomatis yang mengirim pesan WhatsApp sungguhan.
+
+**Yang sudah terverifikasi:** loop agent penuh — skill → pemilihan tool →
+eksekusi → balasan — diuji terhadap AI gateway sungguhan dengan 11 skenario.
+Lihat [docs/UJI-SMOKE.md](./docs/UJI-SMOKE.md).
 
 ## Teknologi
 

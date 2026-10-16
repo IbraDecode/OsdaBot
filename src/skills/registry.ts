@@ -205,10 +205,26 @@ export class SkillRegistry {
   }
 
   /**
-   * Pilih skill yang relevan untuk pesan ini.
+   * Pilih skill untuk pesan ini.
    *
-   * Pre-filter ini hanya mengurangi beban prompt. Keputusan akhir tetap milik
-   * model + Tool Registry — skill tidak pernah memberi izin.
+   * Yang dilakukan: menyaring skill yang konteksnya tidak cocok dan yang izinnya
+   * tidak dimiliki, lalu **mengurutkan** sesuai jumlah trigger yang cocok.
+   *
+   * Yang TIDAK dilakukan: memotong. Semua skill yang lolos penyaringan dikembalikan.
+   *
+   * Komentar lama di siniromise "hanya mengurangi beban prompt", padahal tidak ada
+   * yang dipangkas. Uji smoke (`docs/UJI-SMOKE.md`) mengukur 11 dari 11 skill
+   * terkirim untuk setiap pesan — dengan 10 tool yang benar dipilih dalam 5–15
+   * detik per panggilan.
+   *
+   * Jadi kebijakannya **dibiarkan** dan janjinya yang dikoreksi: mengubahnya
+   * untuk memenuhi deskripsi yang lebih rapi berarti memperburuk perilaku yang
+   * sekarang bekerja, berdasarkan asumsi alih-alih pengukuran.
+   *
+   * Kalau nanti kelambatan ketahuan, pemotongannya harus punya **batas bawah**
+   * — jangan sampai nol skill, karena nol skill berarti nol tool dan jawaban
+   * "aku tidak punya tool", yang persis kondisi yang paling membuat pengguna mengira
+   * bot rusak.
    */
   select(text: string, options: { isGroup: boolean; allowedPermissions: Set<string> }): Skill[] {
     const lower = text.toLowerCase()

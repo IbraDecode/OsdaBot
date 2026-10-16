@@ -34,6 +34,7 @@ Status memakai lima tingkat:
 | Monitoring agent | `TESTED` | 17 test; pola lintas-peristiwa, dasar saran dibedakan |
 | Skill registry | `TESTED` | Loader + validasi metadata |
 | AI provider | `VERIFIED` | **Diuji terhadap gateway sungguhan** |
+| Loop agent (skill → tool) | `VERIFIED` | **11 skenario live**, `docs/UJI-SMOKE.md` |
 | Agent runtime | `TESTED` | Tool calling + batas loop |
 | Message pipeline | `TESTED` | Dedupe + rate limit + aktivasi grup |
 | Tool registry | `TESTED` | 49 tool, otorisasi per tool |
@@ -129,10 +130,10 @@ Setiap perintah **membaca kondisi nyata** dari database dan provider.
 
 | Yang diukur | Nilai |
 |---|---|
-| **Test total** | **686 lulus, 0 gagal** (3 skipped) |
+| **Test total** | **686 lulus, 0 gagal** (14 live dilewati) |
 | Unit | 462 lulus |
 | Integrasi | 217 lulus |
-| Live (opsional) | 10 lulus dengan `RUN_LIVE_TESTS=true` |
+| Live (opsional) | 14 test; **11 lulus** terhadap gateway sungguhan, sisanya dilewati |
 | Tool terdaftar | 49 |
 | Skill termuat | 11 |
 | Permission | 50 |
@@ -269,7 +270,7 @@ percobaan berikutnya.
 
 | Area | Kenapa |
 |---|---|
-| Pairing WhatsApp | Tidak ada nomor yang boleh ditautkan ke akun ini |
+| Pairing WhatsApp | Sesi sudah terhubung, tapi belum ada pesan dari orang nyata yang diproses |
 | Pesan masuk/keluar live | Tidak boleh mengirim ke kontak nyata tanpa izin |
 | Group mention live | Butuh grup uji yang disetujui |
 | BaturPay transaksi | Tidak ada key sandbox; transaksi sungguhan tidak boleh dibuat untuk test |
