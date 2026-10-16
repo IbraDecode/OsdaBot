@@ -18,6 +18,7 @@
  */
 import { describe, expect, it, beforeEach } from 'vitest'
 import { PrismaClient } from '@prisma/client'
+import { bersihkanSisaOrganisasiUji } from '../helpers/cleanup.js'
 import { createHmac } from 'node:crypto'
 import {
   BaturPayAdapter,
@@ -80,6 +81,10 @@ async function kirim(orderId: string, status: string, amount: number, updatedAt?
 }
 
 beforeEach(async () => {
+  // Sisa organisasi uji dari run sebelumnya ikut dibersihkan. File ini tidak
+  // punya `beforeAll`, dan `afterAll`-nya tidak selalu jalan saat test
+  // dijalankan dengan filter — lihat `tests/helpers/cleanup.ts`.
+  await bersihkanSisaOrganisasiUji(prisma)
   await prisma.payment.deleteMany({ where: { providerReference: { startsWith: 'OSDA-UJI-' } } })
   // Kunci idempotensi dari run sebelumnya harus dibersihkan juga — kalau tidak,
   // test ini menguji sisa miliknya sendiri, bukan perilakunya.

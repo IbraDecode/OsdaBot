@@ -13,6 +13,7 @@
  */
 import { describe, expect, it, beforeAll, afterAll, beforeEach } from 'vitest'
 import { PrismaClient } from '@prisma/client'
+import { bersihkanSisaOrganisasiUji } from '../helpers/cleanup.js'
 import { TaskError, TaskService } from '../../src/tasks/service.js'
 
 const prisma = new PrismaClient()
@@ -27,6 +28,7 @@ let memberUji: string
 let TANDA: string
 
 beforeAll(async () => {
+  await bersihkanSisaOrganisasiUji(prisma)
   service = new TaskService(prisma)
   TANDA = `uji-tugas-${Date.now()}`
 

@@ -11,6 +11,7 @@
  */
 import { describe, expect, it, beforeAll, beforeEach, afterAll } from 'vitest'
 import { PrismaClient } from '@prisma/client'
+import { bersihkanSisaOrganisasiUji } from '../helpers/cleanup.js'
 import { MonitoringService, ATURAN_BAWAAN, type Aturan } from '../../src/monitoring/service.js'
 
 const prisma = new PrismaClient()
@@ -49,6 +50,7 @@ async function bersihkan(): Promise<void> {
 }
 
 beforeAll(async () => {
+  await bersihkanSisaOrganisasiUji(prisma)
   const stamp = Date.now()
   const utama = await prisma.organization.create({
     data: { name: `Organisasi Monitoring Uji ${stamp}`, slug: `org-monitor-uji-${stamp}` },

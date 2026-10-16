@@ -15,7 +15,7 @@ pnpm db:migrate && pnpm db:seed && pnpm dev
 
 | | |
 |---|---|
-| Test | **669 lulus, 0 gagal** |
+| Test | **686 lulus, 0 gagal** |
 | Tool | 15 |
 | Skill | 3 |
 | Permission | 50 |
@@ -122,7 +122,7 @@ Yang mana ya?
 - **Tool Registry** — 49 tool dengan permission & risiko
 - **Skills** — 11 skill dari loader Markdown dengan validasi
 - **AI Provider** — terverifikasi terhadap gateway sungguhan
-- **CLI** — 31 perintah operasional yang membaca data nyata
+- **CLI** — 34 perintah operasional yang membaca data nyata
 - **BaturPay adapter** — signature HMAC, idempotensi, anti webhook dobel
 - **Documents** — 5 templat PDF, nomor dokumen unik per organisasi
 - **Knowledge** — pencarian OR dengan stemming Bahasa Indonesia
@@ -132,6 +132,7 @@ Yang mana ya?
 - **Mode aman** — tombol darurat; bertahan melewati restart
 - **Rekaman agent** — langkah, tool, alasan berhenti; bisa ditanyakan
 - **Retensi data** — daftar putih; data bisnis mustahil tersentuh
+- **Monitoring** — pola lintas-peristiwa; saran dibedakan dari fakta
 - **Grup WhatsApp** — tautan per grup, penemuan otomatis saat boot
 - **Lampiran** — unduh media, batas 15 MB
 

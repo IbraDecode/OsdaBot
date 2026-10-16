@@ -7,6 +7,7 @@
  */
 import { describe, expect, it, beforeAll, afterAll } from 'vitest'
 import { PrismaClient } from '@prisma/client'
+import { bersihkanSisaOrganisasiUji } from '../helpers/cleanup.js'
 import { GroupLinkService } from '../../src/groups/service.js'
 
 const prisma = new PrismaClient()
@@ -28,6 +29,7 @@ const JID_B = '199999999999999002@g.us'
 let organisasiId: string
 
 beforeAll(async () => {
+  await bersihkanSisaOrganisasiUji(prisma)
   const org = await prisma.organization.create({
     data: { name: `Uji Grup ${Date.now()}`, slug: `uji-grup-${Date.now()}` },
     select: { id: true },

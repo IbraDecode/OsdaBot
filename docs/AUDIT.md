@@ -1,6 +1,6 @@
 # Audit Kemampuan
 
-Status: **IMPLEMENTED** · **TESTED** (669 test lulus, 0 gagal)
+Status: **IMPLEMENTED** · **TESTED** (686 test lulus, 0 gagal)
 
 `tests/integration/capability-audit.test.ts`
 
@@ -58,14 +58,13 @@ Yang **sengaja** tidak ada:
 diberikan ke peran pengguna. Dicatat eksplisit supaya tidak hilang karena
 kelalaian.
 
-### Tabel mati: 17 model → tersisa 11
+### Tabel mati: 17 model → tersisa 10
 
 Ini bagian yang paling perlu jujur. Schema berisi model untuk fitur yang
 **tidak pernah dibangun**:
 
 - Percakapan pengumpul kebutuhan: `ActiveTask`
 - Mesin alur kerja: `WorkflowRun`
-- Monitoring: `MonitoringConfiguration`, `OrganizationSignal`, `Recommendation`
 - Versi skill: `SkillRecord`, `SkillVersion`
 - Operasional: `Memory`, `GroupMembership`, `MessageDelivery`, `OrganizationSetting`
 - Pendukung: `InvoiceItem`, `KnowledgeChunk`
@@ -77,6 +76,7 @@ Yang sudah dipasang:
 | `TaskAssignment`, `TaskDependency` | `docs/TUGAS.md` |
 | `IdempotencyKey` | commit `23f672e` |
 | `AgentTask`, `AgentStep` | `docs/REKAMAN-AGENT.md` |
+| `MonitoringConfiguration`, `OrganizationSignal`, `Recommendation` | `docs/MONITORING.md` |
 
 Tercoret ≠ selesai. Yang tersisa masih daftar utang:
 
@@ -84,13 +84,19 @@ Tercoret ≠ selesai. Yang tersisa masih daftar utang:
 |---|---|
 | `ActiveTask` | Menyusun kebutuhan lewat percakapan — tugas yang bentuknya belum jelas. Butuh model berbeda. |
 | `WorkflowRun` | Mesin alur kerja otomatis. Skala besar, dan belum ada yang benar-benar butuh. |
-| `MonitoringConfiguration`, `OrganizationSignal`, `Recommendation` | Monitoring agent belum ada sama sekali. |
 | `SkillRecord`, `SkillVersion` | Skill dimuat dari berkas. Versi di database belum ada kebutuhan nyata. |
 | `Memory` | Memori jangka panjang antar percakapan belum dirancang. |
 | `MessageDelivery`, `OrganizationSetting` | Pelacakan per pesan dan pengaturan per organisasi belum ada. |
 
-Jadi **"tercatat" bukan "terpasang"**, dan حتى yang sudah dipasang belum
-berarti bebas dari utang: `AgentTask` belum punya retensi.
+Jadi **"tercatat" bukan "terpasang"**, dan bahkan yang sudah dipasang belum
+berarti bebas dari utang:
+
+| Yang sudah dipasang | Utangnya yang tersisa |
+|---|---|
+| `AgentTask` | Retensi sudah ada; yang belum ada adalah retensi **rekomendasi** dan ekspor |
+| Mode aman | Tidak ada kedaluwarsa — diselesaikan lewat `/ready`, bukan TTL |
+| Monitoring | Jendela tetap, jadi organisasi aktif harian tidak bisa dibedakan dari yang sebulan sekali |
+| `Task` | Retensi tidak ada, tapi ini data organisasi — bukan rekaman operasional |
 
 ### `IdempotencyKey` menjelaskan celah yang saya laporkan sendiri
 
@@ -156,7 +162,8 @@ Yang **tidak** bisa diselesaikan dengan menulis dokumentasi:
 | `WorkflowRun` belum dipakai | Tidak ada alur kerja otomatis. | Utang |
 | `AgentTask` tanpa retensi | Rekaman menumpuk tanpa pernah dibersihkan. | **Dibayar** |
 | Mode aman tanpa kedaluwarsa | Bot diam lama tak terdeteksi. | **Dibayar** (melalui `/ready`) |
-| Monitoring belum ada | Tidak ada deteksi untuk percakapan yang memburuk. | Utang |
+| Monitoring belum ada | Tidak ada deteksi untuk percakapan yang memburuk. | **Dibayar** |
+| Jendela monitoring tetap | organisasi aktif harian dibandingkan dgn yang sebulan sekali. | Utang |
 | `system.safe_mode` tidak ada mekanismenya | Tidak ada tombol darurat saat ada gangguan. | **Dibayar** |
 | `IdempotencyKey` belum dipakai | Nomor dokumen bisa bentrok saat bersamaan. | **Dibayar** |
 | Tautan grup hanya CLI | Admin harus ke terminal; bot yang belum tertaut diam. | **Dibayar** |

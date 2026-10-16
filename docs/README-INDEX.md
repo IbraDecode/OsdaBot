@@ -23,6 +23,7 @@ diperbarui di perubahan yang sama.
 | [KEAMANAN.md](./KEAMANAN.md) | RBAC, otorisasi, batas keamanan |
 | [MODE-AMAN.md](./MODE-AMAN.md) | **Tombol darurat operasional — apa yang berhenti, apa yang tetap jalan** |
 | [RETENSI.md](./RETENSI.md) | Kebijakan retensi data; bukti data bisnis mustahil tersentuh |
+| [MONITORING.md](./MONITORING.md) | Deteksi pola lintas-peristiwa; sinyal & rekomendasi |
 | [DATABASE.md](./DATABASE.md) | Skema, aturan, migrasi |
 | [PEMBAYARAN.md](./PEMBAYARAN.md) | Integrasi BaturPay & keamanan webhook |
 | [BAYAR.md](./BAYAR.md) | Temuan audit kode uang BaturPay |

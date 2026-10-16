@@ -11,6 +11,7 @@
  */
 import { describe, expect, it, beforeAll, afterAll } from 'vitest'
 import { PrismaClient } from '@prisma/client'
+import { bersihkanSisaOrganisasiUji } from '../helpers/cleanup.js'
 import { mkdir, rm } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { DocumentService, LocalStorageDriver } from '../../src/documents/service.js'
@@ -26,6 +27,7 @@ let organisasiLain: string
 let eventId: string
 
 beforeAll(async () => {
+  await bersihkanSisaOrganisasiUji(prisma)
   await rm(DIR, { recursive: true, force: true })
   await mkdir(DIR, { recursive: true })
   service = new DocumentService(prisma, new LocalStorageDriver(DIR))
