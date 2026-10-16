@@ -777,6 +777,135 @@ register('run:show', 'Detail satu jalan agent beserta langkah-langkahnya', async
 })
 
 // ---------------------------------------------------------------------------
+// Monitoring agent
+// ---------------------------------------------------------------------------
+
+register('monitor:run', 'Periksa satu organisasi dan catat sinyal bila ada', async () => {
+  const { MonitoringService } = await import('../monitoring/service.js')
+  const args = parseArgs(process.argv.slice(3))
+  const dryRun = args['dry-run'] !== undefined
+
+  // Tanpa --org, pakai satu-satunya organisasi yang ada. Kalau lebih dari
+  // satu, menolak — memilih diam-diam berarti melaporkan sinyal organisasi
+  // yang salah, dan operator akan melihat masalah yang tidak ada.
+  let kunci = args.org ?? null
+  if (!kunci) {
+    const semua = await prisma.organization.findMany({ select: { slug: true } })
+    if (semua.length === 1) kunci = semua[0]!.slug
+  }
+
+  const org = kunci ? await cariOrganisasi(kunci) : null
+  if (!org) {
+    console.error(
+      kunci
+        ? `Organisasi tidak ditemukan: ${kunci}`
+        : 'Ada lebih dari satu organisasi. Pakai: pnpm osda monitor:run --org=<slug>',
+    )
+    await prisma.$disconnect()
+    process.exit(1)
+  }
+
+  const service = new MonitoringService(prisma)
+  const hasil = await service.periksa(org.id, { dryRun })
+
+  console.log('')
+  console.log(`  Jendela     : ${hasil.sampai.toISOString()} ← ${hasil.sejak.toISOString()}`)
+  console.log(`  Diukur      : ${hasil.diukur.toolCalls} tool call, ${hasil.diukur.agentRuns} jalan agent, ${hasil.diukur.percakapan} percakapan`)
+  console.log('')
+
+  if (hasil.sinyalBaru.length === 0) {
+    console.log('  Tidak ada sinyal. (Datanya diukur, bukan kosong — angka di atas mengukurnya.)')
+  } else {
+    for (const s of hasil.sinyalBaru) {
+      console.log(`  [${s.tingkat}] ${s.jenis}`)
+      console.log(`     tercatat ${s.occurrences}×${s.id === '(baru)' ? ' (baru)' : ''}`)
+    }
+  }
+
+  if (hasil.sinyalDipulihkan.length > 0) {
+    console.log(`\n  ${hasil.sinyalDipulihkan.length} sinyal ditandai selesai.`)
+  }
+  console.log('')
+
+  if (dryRun) {
+    console.log('  Hitung saja — tidak ada yang ditulis.\n')
+  } else {
+    const baru = await service.simpanRekomendasi(org.id)
+    console.log(`  ${baru} rekomendasi disimpan.`)
+    console.log('  Lihat detail: pnpm osda monitor:list\n')
+  }
+
+  await prisma.$disconnect()
+})
+
+register('monitor:configure', 'Atur ambang monitoring untuk satu organisasi', async () => {
+  const { MonitoringService, ATURAN_BAWAAN } = await import('../monitoring/service.js')
+  const args = parseArgs(process.argv.slice(3))
+
+  let kunci = args.org ?? null
+  if (!kunci) {
+    const semua = await prisma.organization.findMany({ select: { slug: true } })
+    if (semua.length === 1) kunci = semua[0]!.slug
+  }
+  const org = kunci ? await cariOrganisasi(kunci) : null
+  if (!org) {
+    console.error('Pakai: pnpm osda monitor:configure --org=<slug> --jenis=<JENIS_SINYAL> --min=<n>')
+    await prisma.$disconnect()
+    process.exit(1)
+  }
+
+  const jenis = args.jenis
+  const minimum = Number(args.min)
+  if (!jenis || !ATURAN_BAWAAN.some((a) => a.jenis === jenis) || !Number.isInteger(minimum) || minimum < 1) {
+    console.error('Jenis sinyal yang tersedia:')
+    for (const a of ATURAN_BAWAAN) console.error(`  ${a.jenis.padEnd(26)} bawaan: ${a.minimum}× dalam ${a.jendelaMenit} menit`)
+    await prisma.$disconnect()
+    process.exit(1)
+  }
+
+  const service = new MonitoringService(prisma)
+  const tersimpan = await service.konfigurasi({
+    organizationId: org.id,
+    name: args.name ?? `ambang ${jenis} = ${minimum}`,
+    thresholds: { [jenis]: { minimum, ...(args.window ? { jendelaMenit: Number(args.window) } : {}) } },
+  })
+
+  console.log('')
+  console.log(`  Konfigurasi disimpan: ${tersimpan.name}`)
+  console.log(`  ${jenis} akan menyala di ${minimum} kemunculan.`)
+  console.log('  Periksa dengan: pnpm osda monitor:run --org=' + org.slug + ' --dry-run')
+  console.log('')
+  await prisma.$disconnect()
+})
+
+register('monitor:list', 'Sinyal aktif per organisasi', async () => {
+  const baris = await prisma.organizationSignal.findMany({
+    where: { status: 'ACTIVE' },
+    orderBy: [{ severity: 'desc' }, { updatedAt: 'desc' }],
+    take: 40,
+    include: { organization: { select: { name: true } } },
+  })
+
+  if (baris.length === 0) {
+    console.log('\n  Tidak ada sinyal aktif. Jalankan: pnpm osda monitor:run --org=<slug>\n')
+    await prisma.$disconnect()
+    return
+  }
+
+  for (const s of baris) {
+    const detail = (s.detail ?? {}) as { ringkasan?: string; saran?: string; dasar?: string }
+    console.log('')
+    console.log(`  [${s.severity}] ${s.organization.name}`)
+    console.log(`     ${s.type} · tercatat ${s.occurrences}× sejak ${s.detectedAt.toISOString().slice(0, 16).replace('T', ' ')}`)
+    if (detail.ringkasan) console.log(`     ${detail.ringkasan}`)
+    if (detail.saran) console.log(`     → ${detail.saran}`)
+    if (detail.dasar) console.log(`     (dasar: ${detail.dasar})`)
+  }
+  console.log('')
+  await prisma.$disconnect()
+})
+
+// ---------------------------------------------------------------------------
 // Retensi data
 // ---------------------------------------------------------------------------
 

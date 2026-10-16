@@ -112,9 +112,6 @@ const TABEL_MATI = new Map<string, string>([
   ['KnowledgeChunk', 'Penulisan lewat `createMany`; klien item tidak pernah dipanggil langsung.'],
   ['MessageDelivery', 'Pelacakan pengiriman per pesan belum ada; yang ada hanya outbox.'],
   ['OrganizationSetting', 'Pengaturan per organisasi belum ada; konfigurasi berasal dari .env.'],
-  ['MonitoringConfiguration', 'Monitoring agent belum ada.'],
-  ['OrganizationSignal', 'Monitoring agent belum ada.'],
-  ['Recommendation', 'Rekomendasi otomatis belum ada.'],
   ['SkillRecord', 'Skill dimuat dari berkas, bukan dari database.'],
   ['SkillVersion', 'Skill dimuat dari berkas, bukan dari database.'],
 ])
