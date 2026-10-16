@@ -13,6 +13,7 @@ diperbarui di perubahan yang sama.
 | [IDENTITAS.md](./IDENTITAS.md) | Identity Engine, PBJ LHS, resolution nama |
 | [KEHADIRAN.md](./KEHADIRAN.md) | Attendance service & pelestarian format |
 | [AGENT.md](./AGENT.md) | Agent Runtime, tool loop, batas, prompt |
+| [REKAMAN-AGENT.md](./REKAMAN-AGENT.md) | Rekaman jalan agent: langkah, alasan berhenti, diagnosis |
 | [TOOLS.md](./TOOLS.md) | Tool Registry, kontrak, standar membuat tool |
 | [SKILLS.md](./SKILLS.md) | Format SKILL.md & registry |
 | [OUTBOX.md](./OUTBOX.md) | Dispatcher event, pola transaksional, penanganan `unknown` |

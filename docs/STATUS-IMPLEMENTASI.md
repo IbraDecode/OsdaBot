@@ -24,15 +24,17 @@ Status memakai lima tingkat:
 | Attendance service | `TESTED` | Formatter + idempotensi + scope |
 | Task service | `TESTED` | 33 test integrasi, siklus & lintas-organisasi ditolak |
 | Safe mode | `TESTED` | 12 test, bertahan melewati restart, 4 gerbang |
+| Rekaman agent | `TESTED` | 10 test, langkah + alasan berhenti |
 | Payment adapter | `TESTED` | 28 test, idempotensi + verifikasi webhook |
 | Safe mode | `TESTED` | 12 test, bertahan melewati restart, 4 gerbang |
+| Rekaman agent | `TESTED` | 10 test, langkah + alasan berhenti |
 | Skill registry | `TESTED` | Loader + validasi metadata |
 | AI provider | `VERIFIED` | **Diuji terhadap gateway sungguhan** |
 | Agent runtime | `TESTED` | Tool calling + batas loop |
 | Message pipeline | `TESTED` | Dedupe + rate limit + aktivasi grup |
 | Tool registry | `TESTED` | 49 tool, otorisasi per tool |
 | HTTP server | `TESTED` | `/health`, `/ready` jalan |
-| CLI | `IMPLEMENTED` | 27 perintah, membaca data nyata |
+| CLI | `IMPLEMENTED` | 29 perintah, membaca data nyata |
 | WhatsApp handshake | `VERIFIED` | Noise handshake berhasil, QR & pairing code dibuat |
 | WhatsApp pairing config | `VERIFIED` | Konfigurasi platform & kebijakan reconnect diperbaiki |
 | WhatsApp pairing blocker | `VERIFIED` | 429 rate-overlimit; guard sudah terbukti berfungsi |
@@ -46,7 +48,7 @@ Status memakai lima tingkat:
 | Document engine | `TESTED` | 5 templat PDF, nomor unik, ekstraksi teks |
 | Knowledge engine | `TESTED` | OR-semantics, stemming Indonesia |
 | Finance engine | `TESTED` | 7 tool, Rupiah integer, jejak audit |
-| Multi-agent | `NOT IMPLEMENTED` | `AgentTask` masih mati |
+| Multi-agent | `NOT IMPLEMENTED` | `AgentTask` sudah mencatat; alur multi-agent belum |
 | Monitoring | `NOT IMPLEMENTED` | 3 model monitoring masih mati |
 | Task collection | `NOT IMPLEMENTED` | `ActiveTask` masih mati |
 | Approval engine | `TESTED` | 8 test integrasi, RBAC ditegakkan |
@@ -124,9 +126,9 @@ Setiap perintah **membaca kondisi nyata** dari database dan provider.
 
 | Yang diukur | Nilai |
 |---|---|
-| **Test total** | **647 lulus, 0 gagal** (3 skipped) |
+| **Test total** | **657 lulus, 0 gagal** (3 skipped) |
 | Unit | 462 lulus |
-| Integrasi | 178 lulus |
+| Integrasi | 188 lulus |
 | Live (opsional) | 10 lulus dengan `RUN_LIVE_TESTS=true` |
 | Tool terdaftar | 49 |
 | Skill termuat | 11 |
