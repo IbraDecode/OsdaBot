@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { readFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { parseFrontMatter, buildMetadata, SkillRegistry } from '../../src/skills/registry.js'
 
 const SKILL_VALID = `---
@@ -167,5 +169,119 @@ describe('SkillRegistry', () => {
     const rendered = registry.render(skills)
     expect(rendered).toContain('## Skill: manage-attendance')
     expect(rendered).toContain('Jangan pernah mengarang anggota')
+  })
+})
+
+/**
+ * Gate izin skill.
+ *
+ * ── Asal bug ────────────────────────────────────────────────────────────────
+ *
+ * Gate lama memakai `every`: skill hanya lolos kalau aktor memegang **semua**
+ * izin yang dideklarasikan. Tapi `ToolRegistry.schemasFor()` sudah memfilter
+ * tool per-izin secara terpisah — jadi gate itu tidak menambah keamanan,
+ * hanya membuang kemampuan.
+ *
+ * Bentuk gejalanya persis seperti yang dilaporkan pengguna:
+ *
+ *     "fitur menambah anggota belum tersedia"
+ *
+ * padahal `organization_create_member` ada di disk dan terdaftar di
+ * `manage-members`. Skill-nya yang hilang, bukan tool-nya.
+ *
+ * Yang memperparah: `manage-reminder` mendeklarasikan `tasks.read` padahal
+ * ketiga tool-nya butuh `automation.*`. Skill itu terlewat untuk siapa pun yang
+ * punya izin pengingat tapi tidak punya izin tugas — dan "ingatkan besok jam 7"
+ * dijawab "fitur belum tersedia".
+ */
+describe('gate izin skill tidak boleh membuang kemampuan', () => {
+  async function muatSemua() {
+    const registry = new SkillRegistry()
+    const root = new URL('../../skills/', import.meta.url).pathname
+    await registry.load(root)
+    return registry
+  }
+
+  it('BUG REGRESSION: skill tetap terkirim kalau aktor punya SATU izin yang cukup', async () => {
+    const registry = await muatSemua()
+
+    const skill = registry
+      .list()
+      .find((s) => s.metadata.name === 'manage-finance')
+    expect(skill, 'skill manage-finance tidak termuat').toBeTruthy()
+
+    // Bendahara baca saja: punya `finance.read`, tidak punya `finance.create`.
+    const hasil = registry.select('daftar tagihan kas', {
+      isGroup: false,
+      allowedPermissions: new Set(['finance.read']),
+    })
+
+    // Dulu skill ini hilang total di sini — dan bersama semua tool-nya.
+    expect(
+      hasil.some((s) => s.metadata.name === 'manage-finance'),
+      'bendahara baca-saja kehilangan seluruh skill keuangan',
+    ).toBe(true)
+  })
+
+  it('BUG REGRESSION: skill hilang kalau TIDAK ADA izinnya sama sekali', async () => {
+    const registry = await muatSemua()
+
+    // Aktor tanpa izin apa pun yang relevan: skill harus benar-benar hilang.
+    // Kalau lolos, prompt membengkak tanpa gunanya dan model melihat tool yang
+    // akan ditolak.
+    const hasil = registry.select('daftar tagihan kas', {
+      isGroup: false,
+      allowedPermissions: new Set<string>(),
+    })
+
+    expect(hasil.length, 'skill tanpa izin sama sekali tetap terkirim').toBe(0)
+  })
+
+  it('BUG REGRESSION: manage-reminder memakai izin automation, bukan tasks', async () => {
+    const registry = await muatSemua()
+
+    const skill = registry.list().find((s) => s.metadata.name === 'manage-reminder')
+    expect(skill, 'skill manage-reminder tidak termuat').toBeTruthy()
+
+    // Izin pengingat harus cukup untuk melihat skill pengingat.
+    expect(
+      skill!.metadata.requiredPermissions,
+      'manage-reminder masih memakai domain izin yang salah',
+    ).toContain('automation.read')
+    expect(skill!.metadata.requiredPermissions).not.toContain('tasks.read')
+  })
+
+  it('BUG REGRESSION: nama tool di dalam isi SKILL.md harus benar-benar ada', async () => {
+    // Model diperintah memanggil nama-nama ini. Kalau namanya salah, model
+    // memanggil tool yang tidak terdaftar dan capability-nya hilang.
+    //
+    // `tool-reachability.test.ts` hanya memeriksa front-matter — isi prosa
+    // tidak pernah diawasi, dan di sanalah nama hantu bersembunyi
+    // (`organization.search_members` alih-alih `organization_search_members`).
+    const daftarTool = new Set<string>()
+    const folder = new URL('../../src/tools/', import.meta.url).pathname
+    for (const berkas of readdirSync(folder)) {
+      if (!berkas.endsWith('.ts')) continue
+      const isi = readFileSync(join(folder, berkas), 'utf-8')
+      for (const cocok of isi.matchAll(/name: '([a-z_]+)'/g)) daftarTool.add(cocok[1]!)
+    }
+
+    const hantu: string[] = []
+    const root = new URL('../../skills/', import.meta.url).pathname
+    for (const kategori of readdirSync(root)) {
+      for (const nama of readdirSync(join(root, kategori))) {
+        const isi = readFileSync(join(root, kategori, nama, 'SKILL.md'), 'utf-8')
+        for (const cocok of isi.matchAll(/`([a-z]+)\.([a-z_]+)`/g)) {
+          const kandidat = `${cocok[1]}_${cocok[2]}`
+          if (daftarTool.has(kandidat)) continue
+          // Lewati yang memang nama izin (`finance.read`), bukan nama tool.
+          if (cocok[2] === 'read' || cocok[2] === 'write' || cocok[2] === 'create' || cocok[2] === 'delete') continue
+          if (cocok[2] === 'update' || cocok[2] === 'send' || cocok[2] === 'list' || cocok[2] === 'assign') continue
+          hantu.push(`${nama}: ${cocok[0]}`)
+        }
+      }
+    }
+
+    expect(hantu, `nama tool tidak dikenal di isi SKILL.md:\n${hantu.join('\n')}`).toEqual([])
   })
 })

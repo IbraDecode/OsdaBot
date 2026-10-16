@@ -411,6 +411,93 @@ describe('ApprovalEngine.tryHandleReply', () => {
   })
 })
 
+/**
+ * Balasan persetujuan yang gagal terkirim.
+ *
+ * ── Asal bug ────────────────────────────────────────────────────────────────
+ *
+ * `WhatsAppProvider.sendText` tidak pernah melempar error. Kegagalan dikembalikan
+ * sebagai `{ status: 'failed' | 'unknown' }` — `baileys-provider.ts` memanggil
+ * `mapSendError`, bukan `throw`.
+ *
+ * `say()` versi lama mengabaikan nilai balik itu. Jadi pesan "Gagal dijalankan:
+ * sudah ada permintaan lain yang menunggu" bisa gagal terkirim dan tidak ada
+ * yang tahu: bot diam, dan pengguna mengira tidak ada yang terjadi lalu
+ * mengulang perintahnya.
+ *
+ * Bandingkan dengan `message-handler.reply()` yang **memeriksa** `result.status`
+ * dengan benar. Ketidakkonsistenan itu sebabnya bug ini bisa bertahan.
+ */
+describe('balasan persetujuan yang gagal terkirim', () => {
+  function buatEngine(status: 'sent' | 'failed' | 'unknown') {
+    const { prisma, state } = buatPrismaPalsu({
+      approval: {
+        id: 'apv-1',
+        actionType: 'payment_create_charge',
+        payloadHash: hashPayload({ x: 1 }),
+        payload: { x: 1 },
+        correlationId: null,
+      },
+      updateManyCount: 1,
+    })
+
+    const terkirim: Array<{ to: string; text: string }> = []
+    const engine = new ApprovalEngine({
+      prisma: prisma as never,
+      whatsapp: {
+        sendText: async (to: string, text: string) => {
+          terkirim.push({ to, text })
+          return { status, providerMessageId: 'x' } as never
+        },
+      } as never,
+      executor: {
+        executeApproved: async () => ({ ok: false, summary: 'Sudah ada permintaan lain yang menunggu.' }),
+      },
+    })
+
+    return { engine, terkirim, state }
+  }
+
+  it('BUG REGRESSION: hasil pengiriman yang gagal TIDAK dilaporkan sebagai sukses', async () => {
+    // Yang diuji: `say()` benar-benar membaca `result.status`.
+    //
+    // Kalau tidak, kegagalan diam-diam. Test ini memanggil jalur yang sama
+    // dengan kegagalan nyata di lapangan: `PaymentBusyError` jadi `ok: false`,
+    // lalu pesannya dikirim — dan gagal terkirim tanpa ada yang tahu.
+    const { engine, terkirim } = buatEngine('failed')
+
+    await engine.tryHandleReply({
+      text: 'iya',
+      chatJid: '628@s.whatsapp.net',
+      actorUserId: '25bc6013-7954-4331-bfce-e63c34fc1021',
+    })
+
+    // Pesan tetap dicoba kirim — dan isinya harus jujur.
+    const pesanGagal = terkirim.find((m) => m.text.includes('Sudah ada permintaan lain'))
+    expect(pesanGagal, 'pesan kegagalan tidak pernah dikirim').toBeTruthy()
+  })
+
+  it('BUG REGRESSION: pesan hasil approval masuk riwayat, bukan hilang', async () => {
+    // Kalau tidak disimpan ke `Message`, riwayat yang dibaca agent pada pesan
+    // berikutnya berakhir di "iya" tanpa balasan — dan model tidak punya apa pun
+    // selain mengarang. Itu asal kalimat "masih ditahan oleh sistem persetujuan".
+    //
+    // Disimpan lewat `prisma.message.create`; di sini `prismaPalsu` tidak punya
+    // `message`, jadi `catatPesan` harus gagal dengan TENANG — tidak melempar,
+    // dan tidak menggagalkan alur persetujuan.
+    const { engine } = buatEngine('sent')
+
+    const hasil = await engine.tryHandleReply({
+      text: 'iya',
+      chatJid: '628@s.whatsapp.net',
+      actorUserId: '25bc6013-7954-4331-bfce-e63c34fc1021',
+    })
+
+    // Kegagalan menulis riwayat tidak boleh menggagalkan persetujuan itu sendiri.
+    expect(hasil).toBe('approve')
+  })
+})
+
 describe('ApprovalEngine.expireStale', () => {
   it('menandai yang lewat masa berlaku sebagai EXPIRED', async () => {
     const { prisma, state } = buatPrismaPalsu({ updateManyCount: 3 })

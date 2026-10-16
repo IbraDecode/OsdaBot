@@ -410,4 +410,43 @@ describe('ToolApprovalExecutor', () => {
       status: 'FAILED',
     })
   })
+
+  it('BUG REGRESSION: cabang correlationId juga WAJIB memfilter executedAt', async () => {
+    // Tanpa `approvalId`, executor mencari lewat `correlationId`. Cabang itu
+    // harus menyaring `executedAt: null` seperti cabang fallback.
+    //
+    // Kalau tidak: `orderBy createdAt desc` mengembalikan approval yang SUDAH
+    // dijalankan, approval yang sebenarnya menunggu tertinggal menggantung, dan
+    // pengguna diberi "sudah dijalankan sebelumnya" padahal tidak ada yang
+    // dijalankan.
+    let whereDipakai: Record<string, unknown> = {}
+    const prismaPalsu = {
+      approval: {
+        findFirst: async (args: { where: Record<string, unknown> }) => {
+          whereDipakai = args.where
+          return null
+        },
+        update: async () => ({}),
+      },
+    }
+
+    const executor = new ToolApprovalExecutor({
+      prisma: prismaPalsu as never,
+      tools: { catatEksekusiLuar: async () => {}, get: () => undefined } as never,
+      authorization: { check: PERMINSI_BEBAS.check } as never,
+    })
+
+    await executor.executeApproved({
+      toolName: 'whatsapp_send_message',
+      payload: { text: 'x' },
+      correlationId: 'corr-1',
+      organizationId: 'org-1',
+    })
+
+    expect(
+      whereDipakai.executedAt,
+      'pencarian per-correlationId tidak menyaring executedAt',
+    ).toBeNull()
+    expect(whereDipakai.organizationId, 'pencarian tidak dibatasi organisasi').toBe('org-1')
+  })
 })
