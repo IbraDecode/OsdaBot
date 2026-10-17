@@ -49,6 +49,13 @@ export class FinanceError extends Error {
       | 'INVOICE_NOT_FOUND'
       | 'PAYMENT_EXCEEDS_INVOICE'
       | 'ALREADY_PAID'
+      // Pembatalan tagihan.
+      //
+      // Dipisah dari `ALREADY_PAID` karena maknanya berbeda: `ALREADY_PAID`
+      // berarti "uang sudah masuk, jangan diubah", sedangkan `CONFLICT`
+      // berarti "kondisi tagihan tidak mengizinkan yang diminta".
+      | 'CONFLICT'
+      | 'VALIDATION_FAILED'
       | 'MEMBER_NOT_FOUND',
     message: string,
   ) {
@@ -493,6 +500,147 @@ export class FinanceService {
         paidAmount,
         remainingAmount: invoice.totalAmount - paidAmount,
         balance,
+      }
+    })
+  }
+
+  /**
+   * Batalkan tagihan.
+   *
+   * ── Kenapa perlu ──────────────────────────────────────────────────────────
+   *
+   * `InvoiceStatus` sudah punya `'cancelled'` sejak awal, dan `listInvoices`
+   * bahkan punya prioritas urutannya. Tapi **tidak ada satu pun tempat yang
+   * menulisnya** — pola yang sama persis dengan `overdue` yang dulu membuat
+   * "tagihan lewat tenggat mana?" selalu dijawab nol.
+   *
+   * Akibatnya permintaan "batalkan tagihan itu" dijawab "fitur belum tersedia",
+   * padahal statusnya sudah disiapkan.
+   *
+   * ── Aturan yang dijaga ────────────────────────────────────────────────────
+   *
+   * 1. **Tagihan yang sudah LUNAS tidak bisa dibatalkan.** Membatalkan tagihan
+   *    yang uangnya sudah masuk berarti uang hilang tanpa jejak. Itu keputusan
+   *    yang harus lewat koreksi, bukan pembatalan.
+   * 2. **Uang tidak disentuh.** Pembatalan membatalkan **tagihan**, bukan
+   *    pembayaran. Kalau sudah ada pembayaran parsial, uangnya tetap tercatat di
+   *    kas — pembatalan hanya menutup tagihannya.
+   * 3. **Dapat dihidupkan lagi.** Salah membatalkan harus bisa diperbaiki tanpa
+   *    membuat tagihan baru dengan nomor berbeda.
+   */
+  async cancelInvoice(input: {
+    organizationId: string
+    invoiceId: string
+    reason: string
+    actorUserId: string
+  }): Promise<{
+    invoiceId: string
+    number: string
+    title: string
+    previousStatus: string
+    paidAmount: number
+    totalAmount: number
+    remainingAmount: number
+    reason: string
+  }> {
+    if (input.reason.trim().length < 3) {
+      throw new FinanceError('VALIDATION_FAILED', 'Sebutkan alasan pembatalan — minimal tiga huruf.')
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const invoice = await tx.invoice.findFirst({
+        where: { id: input.invoiceId, organizationId: input.organizationId },
+        select: { id: true, number: true, title: true, totalAmount: true, paidAmount: true, status: true },
+      })
+
+      if (!invoice) {
+        throw new FinanceError('INVOICE_NOT_FOUND', 'Tagihan tidak ditemukan di organisasi ini.')
+      }
+
+      if (invoice.status === 'cancelled') {
+        throw new FinanceError('CONFLICT', `Tagihan ${invoice.number} sudah dibatalkan.`)
+      }
+
+      // Aturan 1. Lunas berarti uang sudah masuk.
+      if (invoice.paidAmount >= invoice.totalAmount) {
+        throw new FinanceError(
+          'ALREADY_PAID',
+          `Tagihan ${invoice.number} sudah lunas (Rp ${invoice.paidAmount} dari Rp ${invoice.totalAmount}). ` +
+            'Tagihan yang sudah dibayar tidak bisa dibatalkan — catat koreksi kas kalau memang keliru.',
+        )
+      }
+
+      const updated = await tx.invoice.update({
+        where: { id: invoice.id },
+        data: { status: 'cancelled', notes: input.reason.trim() },
+        select: { status: true },
+      })
+
+      if (updated.status !== 'cancelled') {
+        // Guard: kalau ini tidak berlaku, ada jalur tulis lain yang mengarang
+        // status. Lebih baik gagal eksplisit daripada diam-diam tidak berubah.
+        throw new FinanceError('CONFLICT', 'Status tagihan tidak berubah — pembatalan dibatalkan.')
+      }
+
+      return {
+        invoiceId: invoice.id,
+        number: invoice.number,
+        title: invoice.title,
+        previousStatus: invoice.status,
+        paidAmount: invoice.paidAmount,
+        totalAmount: invoice.totalAmount,
+        // Uang yang sudah dibayar tidak hilang — hanya tagihannya yang ditutup.
+        remainingAmount: invoice.totalAmount - invoice.paidAmount,
+        reason: input.reason.trim(),
+      }
+    })
+  }
+
+  /**
+   * Batalkan pembatalan tagihan.
+   *
+   * Salah membatalkan harus bisa diperbaiki. Tanpa ini, satu pesan "batal"
+   * yang tidak sengaja menghapus tagihan secara permanen — dan tidak ada jalan
+   * lain selain membuat tagihan baru dengan nomor berbeda.
+   *
+   * Status kembali ke `unpaid` kalau belum ada pembayaran, `partial` kalau
+   * sudah ada sebagian. Dan kalau ternyata sudah lunas, itu adalah `paid` —
+   * dihitung dari `paidAmount`, bukan ditebak.
+   */
+  async restoreInvoice(input: {
+    organizationId: string
+    invoiceId: string
+    actorUserId: string
+  }): Promise<{ invoiceId: string; number: string; restoredStatus: string; paidAmount: number }> {
+    return this.prisma.$transaction(async (tx) => {
+      const invoice = await tx.invoice.findFirst({
+        where: { id: input.invoiceId, organizationId: input.organizationId },
+        select: { id: true, number: true, status: true, totalAmount: true, paidAmount: true },
+      })
+
+      if (!invoice) {
+        throw new FinanceError('INVOICE_NOT_FOUND', 'Tagihan tidak ditemukan di organisasi ini.')
+      }
+      if (invoice.status !== 'cancelled') {
+        throw new FinanceError('CONFLICT', `Tagihan ${invoice.number} tidak dalam status dibatalkan.`)
+      }
+
+      // Ditentukan dari `paidAmount`, bukan ditebak — kalau ternyata sudah lunas
+      // sebelum pembatalan, memulihkannya ke `unpaid` akan membuat tagihan
+      // "`belum bayar`" padahal uangnya sudah masuk.
+      const restoredStatus: InvoiceStatus =
+        invoice.paidAmount >= invoice.totalAmount ? 'paid' : invoice.paidAmount > 0 ? 'partial' : 'unpaid'
+
+      await tx.invoice.update({
+        where: { id: invoice.id },
+        data: { status: restoredStatus },
+      })
+
+      return {
+        invoiceId: invoice.id,
+        number: invoice.number,
+        restoredStatus,
+        paidAmount: invoice.paidAmount,
       }
     })
   }

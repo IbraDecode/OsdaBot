@@ -469,6 +469,152 @@ export function buildFinanceTools(deps: FinanceToolsDeps): Array<ToolDefinition<
     },
   })
 
+  /**
+   * Batalkan tagihan.
+   *
+   * ── Kenapa perlu ──────────────────────────────────────────────────────────
+   *
+   * Status `'cancelled'` sudah ada di `InvoiceStatus` dan `listInvoices` sudah
+   * punya prioritasnya — tapi tidak ada satu pun yang menulisnya. Pola yang sama
+   * dengan `overdue` yang dulu selalu mengembalikan nol baris.
+   *
+   * Perlu persetujuan: membatalkan tagihan menutup hak orang untuk membayar,
+   * dan itu keliru besar kalau dilakukan karena salah baca.
+   */
+  const cancelInvoice: ToolDefinition<
+    { invoiceId?: string; invoiceNumber?: string; reason: string },
+    unknown
+  > = {
+    name: 'finance_cancel_invoice',
+    description:
+      'Batalkan tagihan sehingga tidak bisa dibayar lagi. Gunakan saat pengguna bilang "batalkan tagihan itu", "tagihannya tidak jadi", atau "itu keliru". ' +
+      'Uang yang SUDAH dibayar tidak hilang — pembatalan hanya menutup tagihannya. ' +
+      'Tagihan yang sudah LUNAS tidak bisa dibatalkan; untuk itu catat koreksi kas. ' +
+      'Cari tagihan lebih dulu dengan finance_list_invoices — jangan mengarang invoiceId.',
+    inputSchema: z
+      .object({
+        invoiceId: z.string().uuid().optional().describe('ID tagihan. Ambil dari finance_list_invoices — paling presisi.'),
+        invoiceNumber: z
+          .string()
+          .max(80)
+          .optional()
+          .describe('Nomor tagihan, mis. "IJN/2026/001". Pakai kalau invoiceId tidak diketahui.'),
+        reason: z
+          .string()
+          .min(3)
+          .max(200)
+          .describe('Alasan pembatalan. WAJIB — pembatalan tanpa alasan tidak bisa dipertanggungjawabkan.'),
+      })
+      .strict() as never,
+    requiredPermissions: [PERMISSIONS.FINANCE_CREATE],
+    riskLevel: 'HIGH',
+    requiresApproval: true,
+    async execute(input, context) {
+      const organizationId = requireOrg(context)
+      const actorUserId = requireActor(context)
+
+      const tagihan = await cariTagihan(finance, organizationId, input.invoiceId, input.invoiceNumber)
+      if (tagihan.ambigu) {
+        throw new ToolError('AMBIGUOUS_REFERENCE', tagihan.pesan)
+      }
+      if (!tagihan.tagihan) {
+        throw new ToolError(
+          'NOT_FOUND',
+          `Tagihan "${input.invoiceNumber ?? input.invoiceId ?? ''}" tidak ditemukan di organisasi ini. ` +
+            'Cari dengan finance_list_invoices.',
+        )
+      }
+
+      try {
+        const hasil = await finance.cancelInvoice({
+          organizationId,
+          invoiceId: tagihan.tagihan.id,
+          reason: input.reason,
+          actorUserId,
+        })
+
+        return {
+          invoiceId: hasil.invoiceId,
+          number: hasil.number,
+          title: hasil.title,
+          previousStatus: hasil.previousStatus,
+          cancelled: true,
+          // Dinyatakan eksplisit: pembatalan TIDAK menyentuh uang.
+          moneyUnchanged: true,
+          paidAmount: hasil.paidAmount,
+          paidAmountText: `Rp ${formatAmount(hasil.paidAmount)}`,
+          remainingAmount: hasil.remainingAmount,
+          remainingAmountText: `Rp ${formatAmount(hasil.remainingAmount)}`,
+          reason: hasil.reason,
+          restorable: true,
+          message:
+            `Tagihan ${hasil.number} (${hasil.title}) sudah dibatalkan. ` +
+            (hasil.paidAmount > 0
+              ? `Pembayaran Rp ${formatAmount(hasil.paidAmount)} yang sudah masuk TIDAK hilang — hanya tagihannya yang ditutup. `
+              : '') +
+            'Kalau ternyata salah batal, bilang "kembalikan tagihan itu" untuk menghidupkannya lagi.',
+        }
+      } catch (error) {
+        throw mapFinanceError(error)
+      }
+    },
+  }
+
+  /**
+   * Kembalikan tagihan yang dibatalkan.
+   *
+   * Tanpa ini, satu pesan "batal" yang tidak sengaja menghapus tagihan secara
+   * permanen — dan tidak ada jalan lain selain membuat tagihan baru dengan
+   * nomor berbeda, yang mengotori daftar tagihan.
+   */
+  const restoreInvoice: ToolDefinition<{ invoiceId?: string; invoiceNumber?: string }, unknown> = {
+    name: 'finance_restore_invoice',
+    description:
+      'Kembalikan tagihan yang sebelumnya dibatalkan, sehingga bisa dibayar lagi. ' +
+      'Pakai saat pengguna bilang "kembalikan tagihannya", "tidak jadi dibatalkan", atau "salah batal". ' +
+      'Status dipulihkan dari data pembayaran: `unpaid` kalau belum ada, `partial` kalau sudah sebagian.',
+    inputSchema: z
+      .object({
+        invoiceId: z.string().uuid().optional().describe('ID tagihan. Ambil dari finance_list_invoices.'),
+        invoiceNumber: z.string().max(80).optional().describe('Nomor tagihan.'),
+      })
+      .strict() as never,
+    requiredPermissions: [PERMISSIONS.FINANCE_CREATE],
+    riskLevel: 'MEDIUM',
+    requiresApproval: false,
+    async execute(input, context) {
+      const organizationId = requireOrg(context)
+
+      const tagihan = await cariTagihan(finance, organizationId, input.invoiceId, input.invoiceNumber)
+      if (tagihan.ambigu) {
+        throw new ToolError('AMBIGUOUS_REFERENCE', tagihan.pesan)
+      }
+      if (!tagihan.tagihan) {
+        throw new ToolError('NOT_FOUND', `Tagihan "${input.invoiceNumber ?? input.invoiceId ?? ''}" tidak ditemukan.`)
+      }
+
+      try {
+        const hasil = await finance.restoreInvoice({
+          organizationId,
+          invoiceId: tagihan.tagihan.id,
+          actorUserId: requireActor(context),
+        })
+
+        return {
+          invoiceId: hasil.invoiceId,
+          number: hasil.number,
+          restoredStatus: hasil.restoredStatus,
+          paidAmount: hasil.paidAmount,
+          message:
+            `Tagihan ${hasil.number} sudah dikembalikan, statusnya ${hasil.restoredStatus}. ` +
+            'Bisa dibayar lagi.',
+        }
+      } catch (error) {
+        throw mapFinanceError(error)
+      }
+    },
+  }
+
   const semua = [
     listAccounts,
     createAccount,
@@ -476,6 +622,8 @@ export function buildFinanceTools(deps: FinanceToolsDeps): Array<ToolDefinition<
     createInvoice,
     listInvoices,
     recordPayment,
+    cancelInvoice,
+    restoreInvoice,
     recentEntries,
   ]
   return semua.map((tool) => bungkus(tool as unknown as ToolDefinition<never, unknown>)) as never
@@ -518,6 +666,87 @@ function pilihRekening(
   return accounts[0]!
 }
 
+/**
+ * Aktor yang sedang bertindak.
+ *
+ * Wajib ada untuk mutasi yang mengubah data — pembatalan tagihan tidak boleh
+ * bisa dilakukan tanpa siapa yang melakukannya.
+ */
+function requireActor(context: ToolExecutionContext): string {
+  if (!context.actorUserId) {
+    throw new ToolError('UNAUTHENTICATED', 'Tidak tahu siapa yang sedang bertindak, jadi perubahan tidak bisa dicatat.')
+  }
+  return context.actorUserId
+}
+
+/**
+ * Cari tagihan satu, dengan ambiguitas yang bisa dibedakan.
+ *
+ * Nomor tagihan tidak pernah Given orang yang sama. Jadi kalau lebih dari satu
+ * cocok, itu harus ditanyakan — bukan diambil yang pertama.
+ */
+async function cariTagihan(
+  finance: FinanceService,
+  organizationId: string,
+  invoiceId: string | undefined,
+  invoiceNumber: string | undefined,
+): Promise<
+  | { tagihan: null; ambigu: false; pesan: string }
+  | { tagihan: null; ambigu: true; pesan: string }
+  | {
+      tagihan: {
+        id: string
+        number: string
+        title: string
+        status: string
+        paidAmount: number
+        totalAmount: number
+        remainingAmount: number
+        dueAt: Date | null
+      }
+      ambigu: false
+      pesan: string
+    }
+> {
+  if (invoiceId) {
+    const satu = await finance.getInvoice(organizationId, invoiceId)
+    if (!satu) return { tagihan: null, ambigu: false, pesan: 'tidak ditemukan' }
+    return { tagihan: satu, ambigu: false, pesan: '' }
+  }
+
+  if (!invoiceNumber) return { tagihan: null, ambigu: false, pesan: 'tidak ditemukan' }
+
+  // Lewat service, bukan Prisma langsung: tool ini tidak punya dependensi
+  // database, dan servicenya yang memutuskan apa yang boleh dilihat.
+  //
+  // Nomor tagihan dijamin unik per organisasi, tapi pencarian dengan `contains`
+  // bisa memunculkan beberapa. Kalau begitu harus ditanyakan — membatalkan
+  // tagihan yang salah tidak bisa dibatalkan efeknya.
+  const needle = invoiceNumber.trim().toLowerCase()
+  const semua = await finance.listInvoices(organizationId, { limit: 200 })
+  const kandidat = semua
+    .filter((t) => t.number.toLowerCase().includes(needle) || t.title.toLowerCase().includes(needle))
+    .slice(0, 6)
+
+  if (kandidat.length === 1) {
+    const satu = await finance.getInvoice(organizationId, kandidat[0]!.id)
+    return satu
+      ? { tagihan: satu, ambigu: false, pesan: '' }
+      : { tagihan: null, ambigu: false, pesan: 'tidak ditemukan' }
+  }
+  if (kandidat.length > 1) {
+    return {
+      tagihan: null,
+      ambigu: true,
+      pesan:
+        `Ada ${kandidat.length} tagihan yang cocok dengan "${invoiceNumber}": ` +
+        kandidat.map((t) => `${t.number} (${t.title})`).join(', ') +
+        '. Tanya pengguna yang mana — jangan menebak.',
+    }
+  }
+  return { tagihan: null, ambigu: false, pesan: 'tidak ditemukan' }
+}
+
 function requireOrg(context: ToolExecutionContext): string {
   const organizationId = context.organizationId
   if (!organizationId) {
@@ -536,10 +765,19 @@ export function mapFinanceError(error: unknown): ToolError {
         return new ToolError('NOT_FOUND', error.message)
       case 'AMOUNT_INVALID':
       case 'AMOUNT_TOO_LARGE':
+      case 'VALIDATION_FAILED':
         return new ToolError('VALIDATION_FAILED', error.message)
       case 'INSUFFICIENT_BALANCE':
       case 'PAYMENT_EXCEEDS_INVOICE':
       case 'ALREADY_PAID':
+      // `CONFLICT` dan `ALREADY_PAID` dipetakan ke `CONFLICT`, bukan ke
+      // `VALIDATION_FAILED`.
+      //
+      // Bedanya penting bagi model: `VALIDATION_FAILED` berarti "perbaiki
+      // argumenmu", sedangkan `CONFLICT` berarti "kondisi sekarang tidak
+      // mengizinkan". Tanpa pemisahan itu, model mencoba mengulang dengan
+      // argumen berbeda dan membuat permintaan kedua untuk hal yang sama.
+      case 'CONFLICT':
         return new ToolError('CONFLICT', error.message)
     }
   }

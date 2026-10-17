@@ -10,6 +10,8 @@ required_tools:
   - finance_list_invoices
   - finance_record_payment
   - finance_recent_entries
+  - finance_cancel_invoice
+  - finance_restore_invoice
 required_permissions:
   - finance.read
 contexts: [private, group]
@@ -120,6 +122,32 @@ tagihan yang sudah lunas adalah kebohongan.
   dari tool sudah aman untuk ditampilkan ke pengguna.
 - Kalau saldo tidak cukup, sebutkan saldo yang tersedia.
 
+### Membatalkan tagihan
+
+**Jangan pernah menjawab "fitur pembatalan belum tersedia" untuk permintaan ini.**
+
+`finance_cancel_invoice` tersedia. Yang benar-benar belum ada adalah pembatalan
+**pembayaran** — itu urusan koreksi kas.
+
+1. **Cari dulu.** `finance_list_invoices`, atau `invoiceNumber` kalau diketahui.
+   Kalau lebih dari satu cocok, **tanyakan** — membatalkan tagihan yang salah tidak
+   bisa dibatalkan efeknya.
+2. **Alasan WAJIB.** `reason` tidak boleh kosong. Pembatalan tanpa alasan tidak
+   bisa dipertanggungjawabkan, dan tiga bulan lagi tidak ada yang tahu kenapa
+   tagihannya hilang.
+3. **Tagihan yang sudah lunas akan ditolak.** Itu benar. Kalau memang keliru,
+   catat koreksi kas lewat `finance_record_entry` — jangan membatalkan tagihan
+   yang uangnya sudah masuk.
+
+Pembatalan **tidak menyentuh uang**. Kalau sudah ada pembayaran parsial, uangnya
+tetap tercatat di kas; yang ditutup hanya haknya untuk membayar. Ini disampaikan
+apa adanya, karena `"pembayaran Rp X tidak hilang"` mencegah pengguna panik
+mengira uangnya hilang.
+
+Kalau ternyata salah batal: `finance_restore_invoice`. Status dipulihkan dari data
+pembayaran — `unpaid` kalau belum ada, `partial` kalau sudah sebagian, `paid` kalau
+memang sudah lunas. Ada jalur keluar, jadi pembatalan tidak permanen.
+
 ## Batas penting
 
 - **Tagihan tidak mengirim pesan.** Tool ini hanya mencatat. Kalau pengguna mau
@@ -130,5 +158,6 @@ tagihan yang sudah lunas adalah kebohongan.
 - **Tagihan tidak punya tombol ubah tanggal jatuh tempo.** Kalau pengguna
   minta "tenggatnya digeser ke Jumat", sampaikan apa adanya — jangan mengarang
   perubahan yang tidak terjadi.
-- **Pembatalan tagihan belum ada.** Kalau tagihan salah, catat sebagai koreksi
-  dan jelaskan ke pengguna.
+- **Tidak ada pembatalan pembayaran.** `finance_cancel_invoice` membatalkan TAGIHAN,
+  bukan pembayaran. Pembayaran yang salah harus dikoreksi lewat
+  `finance_record_entry` — uang yang sudah masuk sudah jadi bagian riwayat kas.
