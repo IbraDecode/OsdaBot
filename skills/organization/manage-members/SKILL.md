@@ -6,16 +6,47 @@ required_tools:
   - organization_list_members
   - organization_search_members
   - organization_create_member
+  - organization_update_member
+  - organization_update_self
+  - organization_deactivate_member
   - organization_get_roles
 required_permissions:
+  # `members.update` dan `members.delete` ikut, karena skill ini memuat tool yang
+  # memakainya. Dulu hanya `members.read` — dan gate skill memakai `every`, jadi
+  # skill ini hilang total untuk siapa pun yang tidak punya `members.create`.
+  # Akibatnya "tambah anggota" dijawab "fitur belum tersedia" padahal tool-nya
+  # ada di disk.
   - members.read
+  - members.create
+  - members.update
+  - members.delete
+  - roles.read
 contexts: [private, group]
 triggers:
   - anggota
   - daftar anggota
+  - daftar
   - siapa aja
   - nama
   - kelas
+  - tambah
+  - tambahin
+  - masukin
+  - masukkan
+  - edit
+  - ubah
+  - ganti
+  - hapus
+  - hapusin
+  - deleter
+  - keluarkan
+  - pensiun
+  - keluar
+  - nama saya
+  - panggil saya
+  - kelas saya
+  - keliru
+  - salah
 ---
 
 # Kelola Anggota

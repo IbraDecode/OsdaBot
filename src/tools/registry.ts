@@ -288,7 +288,15 @@ export class ToolRegistry {
         // Tolak, jangan lewati. Tanpa broker, tool berisiko TIDAK BOLEH jalan.
         this.logger.error({ tool: name, correlationId: context.correlationId }, 'tool butuh persetujuan tapi broker tidak terpasang')
         await this.audit(context, name, input, 'denied', 'APPROVAL_UNAVAILABLE')
-        return fail('INTERNAL_ERROR', 'Mekanisme persetujuan belum siap. Tindakan ini belum bisa dijalankan.')
+        // `INTERNAL_ERROR` jujur: ini kondisi server, bukan kesalahan pengguna.
+        // Tapi pesannya harus bisa ditindaklanjuti — "belum siap" tidak
+        // memberi tahu operator apa yang harus diperbaiki.
+        this.logger.error({ tool: name }, 'tool butuh persetujuan tapi broker tidak terpasang')
+        return fail(
+          'INTERNAL_ERROR',
+          'Tindakan ini butuh persetujuan, tapi layanan persetujuan belum aktif di server ini. ' +
+            'Coba lagi beberapa saat — kalau tetap gagal, laporkan ke pengelola bot.',
+        )
       }
 
       const verdict = await broker.request({

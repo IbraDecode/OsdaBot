@@ -33,8 +33,16 @@ import { ROLE_TEMPLATES } from '../../src/security/role-templates.js'
  */
 const IZIN_TANPA_TOOL = new Map<string, string>([
   ['ORGANIZATION_UPDATE', 'Profil organisasi belum bisa diubah dari chat; lewat CLI.'],
-  ['MEMBERS_UPDATE', 'Belum ada tool untuk mengubah data anggota — hanya membuat.'],
-  ['MEMBERS_DELETE', 'Sengaja dihilangkan: menghapus anggota berarti membatalkan seluruh riwayatnya.'],
+  // `MEMBERS_UPDATE` dan `MEMBERS_DELETE` DIHAPUS dari daftar ini.
+  //
+  // Keduanya tadinya tercatat sebagai utang: izinnya ada, toolnya tidak.
+  // Sekarang ada: `organization_update_member` dan
+  // `organization_deactivate_member`. Inginan "ganti nama saya" dan "hapus
+  // anggota lama" dijawab "fitur belum tersedia" selama ini karena kedua izin
+  // itu tidak pernah dipakai tool mana pun.
+  //
+  // `MEMBERS_DELETE` sengaja tidak berarti hapus baris — lihat catatan
+  // soft-delete di tool-nya.
   ['MEMBERS_EXPORT', 'Ekspor data anggota ke berkas eksternal belum ada.'],
   ['ROLES_MANAGE', 'Peran kustom belum ada. Peran sistem cukup untuk pemakaian saat ini.'],
   ['ORGANIZATION_READ', 'Detail organisasi sudah tampil sebagai konteks di balasan.'],
