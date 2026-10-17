@@ -183,16 +183,7 @@ export class ApprovalEngine implements ApprovalBroker {
       `(ref ${approvalId.slice(0, 8)})`,
     ].join('\n')
 
-    try {
-      const result = await this.deps.whatsapp.sendText(chatJid, teks, {
-        idempotencyKey: `approval:${approvalId}`,
-      })
-      if (result.status === 'failed') {
-        log.error({ approvalId, errorCode: result.errorCode }, 'gagal mengirim permintaan persetujuan')
-      }
-    } catch (error) {
-      log.error({ approvalId, err: error }, 'gagal mengirim permintaan persetujuan')
-    }
+    await this.kirimSistem(chatJid, teks, `approval:${approvalId}`, 'permintaan persetujuan')
   }
 
   /**
@@ -213,7 +204,7 @@ export class ApprovalEngine implements ApprovalBroker {
       return 'reject'
     }
 
-    const pending = await this.deps.prisma.approval.findFirst({
+    const tertunda = await this.deps.prisma.approval.findMany({
       where: {
         chatJid: input.chatJid,
         requestedBy: input.actorUserId,
@@ -224,6 +215,8 @@ export class ApprovalEngine implements ApprovalBroker {
       select: { id: true, actionType: true, payloadPreview: true, payloadHash: true, payload: true, correlationId: true },
     })
 
+    const pending = tertunda[0]
+
     if (!pending) {
       await this.say(
         input.chatJid,
@@ -232,15 +225,76 @@ export class ApprovalEngine implements ApprovalBroker {
       return 'reject'
     }
 
+    // ── "batal semua" — diperiksa PERTAMA ──────────────────────────────────────
+    //
+    // Karena tidak ambigu. "Iya" di bawah hanya bermakna kalau ada tepat satu
+    // tindakan, jadi lebih dari satu harus ditolak. Tapi "batal semua" tetap
+    // berlaku berapa pun jumlahnya — dan justru itulah jalan keluarnya.
+    //
+    // Urutannya penting. Versi pertama menaruh pemeriksaan jumlah di sini,
+    // sehingga "batal semua" tidak pernah sampai ke bawah dan jawabannya
+    // "tidak jelas kamu menyetujui yang mana" — padahal jelas:
+    // batalkan semuanya.
     if (intent === 'reject_all') {
-      await this.resolve(pending.id, 'REJECTED', input.actorUserId)
-      await this.say(input.chatJid, 'Dibatalkan.')
-      return 'reject'
+      /*
+       * BUBARKAN SEMUA, bukan satu.
+       *
+       * Kalau kode ini hanya membatalkan satu, itu janji palsu — pesan di
+       * bawah menjanjikan "batalkan semuanya". Test baru saya yang menangkapnya.
+       * Dan tanpa ini, approval yang tersisa hanya hilang lewat kedaluwarsa
+       * 15 menit.
+       */
+     const hasil = await this.deps.prisma.approval.updateMany({
+       where: {
+         id: { in: tertunda.map((a) => a.id) },
+         status: 'PENDING',
+       },
+       data: { status: 'REJECTED', resolvedAt: new Date(), resolvedBy: input.actorUserId },
+     })
+
+     if (hasil.count > 1) {
+       log.info({ jumlah: hasil.count }, 'semua persetujuan tertunda dibatalkan')
+     }
+
+     await this.say(
+       input.chatJid,
+       hasil.count > 1
+         ? `Dibatalkan. ${hasil.count} tindakan yang menunggu persetujuan sudah batal, tidak ada yang dijalankan.`
+         : 'Dibatalkan.',
+     )
+     return 'reject'
     }
 
     if (intent === 'reject') {
       await this.resolve(pending.id, 'REJECTED', input.actorUserId)
       await this.say(input.chatJid, 'Dibatalkan. Aku tidak melakukan tindakan itu.')
+      return 'reject'
+    }
+
+    // ── Lebih dari satu tindakan menunggu ─────────────────────────────────────
+    //
+    // "Iya" hanya punya satu arti: setujui. Kalau dua tindakan berbeda sedang
+    // menunggu, menjalankan yang terbaru berarti menebak mana yang dimaksud
+    // pengguna.
+    //
+    // Dulu `findFirst` langsung mengambil yang terbaru tanpa memberi tahu apa
+    // pun — jadi "kirim ringkasan ke grup" (tunggak) lalu "bikin QRIS" (baru)
+    // bisa membuat pengguna menyetujui QRIS sambil mengira ia menyetujui yang
+    // lain, atau sebaliknya.
+    //
+    // Batasnya harus dinyatakan, bukan disembunyikan: tindakan yang lebih lama
+    // tetap menggantung sampai kedaluwarsa. Itu lebih baik daripada menyetujui
+    // hal yang salah tanpa orang sadarnya.
+    if (tertunda.length > 1) {
+      await this.say(
+        input.chatJid,
+        `Ada ${tertunda.length} tindakan yang menunggu persetujuanmu. Balasan "iya" belum bisa diterima — ` +
+          'tidak jelas kamu menyetujui yang mana.\n\n' +
+          tertunda
+            .map((a, i) => `${i + 1}. ${a.actionType}\n${a.payloadPreview}`)
+            .join('\n\n') +
+          '\n\nBatalkan semuanya dengan "batal semua", atau ulangi perintahnya satu per satu.',
+      )
       return 'reject'
     }
 
@@ -349,28 +403,51 @@ export class ApprovalEngine implements ApprovalBroker {
    * berikutnya punya dasar.
    */
   private async say(chatJid: string, text: string): Promise<void> {
+    await this.kirimSistem(chatJid, text, `approval-reply:${randomUUID()}`, 'balasan persetujuan')
+  }
+
+  /**
+   * Kirim pesan sistem, periksa hasilnya, dan simpan ke riwayat kalau sampai.
+   *
+   * ── Kenapa satu jalur untuk permintaan dan hasil ────────────────────────────
+   *
+   * Semula dua jalur terpisah. Yang satu memeriksa `result.status`, yang lain
+   * tidak. Dua jalur untuk hal yang sama hampir pasti akan berbeda lagi
+   * someday — dan yang kedua tidak akan dijaga siapa pun.
+   *
+   * Dua aturan yang dipegang:
+   *
+   * 1. **Hasil pengiriman wajib diperiksa.** `sendText` tidak pernah melempar
+   *    error; kegagalan dikembalikan sebagai `{ status: 'failed' }`. Tanpa
+   *    pemeriksaan, pesan hilang tanpa jejak.
+   *
+   * 2. **Hanya yang benar-benar sampai yang disimpan.** Menyimpan pesan gagal
+   *    kirim membuat riwayat berbohong — agent berikutnya akan "membaca" jawaban
+   *    yang tidak pernah dibaca pengguna. Dan karena riwayat itulah sumber
+   *    jawaban model, bohong di sana jadi mengarang di sini.
+   */
+  private async kirimSistem(
+    chatJid: string,
+    text: string,
+    idempotencyKey: string,
+    apa: string,
+  ): Promise<void> {
     let terkirim: boolean
 
     try {
-      const hasil = await this.deps.whatsapp.sendText(chatJid, text, {
-        idempotencyKey: `approval-reply:${randomUUID()}`,
-      })
+      const hasil = await this.deps.whatsapp.sendText(chatJid, text, { idempotencyKey })
       if (hasil.status === 'failed') {
-        log.error({ chatJid, errorCode: hasil.errorCode }, 'balasan persetujuan gagal terkirim')
+        log.error({ chatJid, errorCode: hasil.errorCode }, `${apa} gagal terkirim`)
         terkirim = false
       } else {
-        if (hasil.status === 'unknown') log.warn({ chatJid }, 'status pengiriman persetujuan tidak diketahui')
+        if (hasil.status === 'unknown') log.warn({ chatJid }, `status pengiriman ${apa} tidak diketahui`)
         terkirim = true
       }
     } catch (error) {
-      log.warn({ err: error }, 'gagal mengirim balasan persetujuan')
+      log.error({ err: error }, `gagal mengirim ${apa}`)
       terkirim = false
     }
 
-    // Hanya kalau benar-benar sampai ke pengguna.
-    //
-    // Menyimpan pesan yang gagal terkirim membuat riwayat berbohong: agent
-    // berikutnya akan "membaca" jawaban yang tidak pernah dibaca pengguna.
     if (terkirim) await this.catatPesan(chatJid, text)
   }
 

@@ -155,6 +155,10 @@ function buatPrismaPalsu(options: {
         return { id: 'apv-00000000-0000-0000-0000-000000000001' }
       },
       findFirst: async () => state.approval,
+      // `findMany` dipakai `tryHandleReply` untuk mendeteksi lebih dari satu
+      // persetujuan tertunda. Tanpa itu, `findFirst` benar-benar bisa
+      // menyetujui tindakan yang salah.
+      findMany: async () => (state.approval ? [state.approval] : []),
       updateMany: async ({ data }: { data: Record<string, unknown> }) => {
         state.updated.push(data)
         return { count: options.updateManyCount ?? 1 }
@@ -259,7 +263,12 @@ describe('ApprovalEngine.tryHandleReply', () => {
 
     // Query-nya sudah difilter `requestedBy: actorUserId` di engine, jadi
     // kalau orangnya berbeda, tidak ada approval yang ditemukan.
+    //
+    // KEDUA metode harus dikosongkan. `tryHandleReply` dulu memakai `findFirst`;
+    // sekarang `findMany` (untuk mendeteksi lebih dari satu tertunda).
+    // Mengosongkan hanya satu membuat test lulus hampa.
     prisma.approval.findFirst = async () => null
+    prisma.approval.findMany = async () => []
 
     const hasil = await engine.tryHandleReply({ ...dasar, text: 'iya' })
 
@@ -552,5 +561,135 @@ describe('ApprovalEngine.expireStale', () => {
 
     expect(jumlah).toBe(3)
     expect(state.updated[0]!.status).toBe('EXPIRED')
+  })
+
+})
+
+/**
+ * Lebih dari satu persetujuan tertunda.
+ *
+ * ── Asal bug ────────────────────────────────────────────────────────────────
+ *
+ * `tryHandleReply` memakai `findFirst` dengan `orderBy createdAt desc` — jadi
+ * selalu mengambil yang **terbaru**, tanpa memberi tahu apa pun.
+ *
+ * Skenario nyata: "kirim ringkasan ke grup" (tunggak) → "bikin QRIS" (baru) →
+ * pengguna mengetik "iya" sambil mengira ia menyetujui yang kedua. Bot
+ * menjalankan yang pertama. Artinya yang benar, persetujuan untuk yang salah.
+ *
+ * Persetujuan yang lebih lama juga menggantung sampai kedaluwarsa tanpa pernah
+ * ada yang tahu masih ada. Itu batas yang harus dinyatakan, bukan disembunyikan.
+ */
+describe('lebih dari satu persetujuan tertunda', () => {
+  function duaApproval() {
+    return [
+      {
+        id: 'apv-lama',
+        actionType: 'whatsapp_send_message',
+        payloadPreview: 'Kirim ringkasan ke grup',
+        payloadHash: hashPayload({ a: 1 }),
+        payload: { a: 1 },
+        correlationId: null,
+        organizationId: 'org-1',
+      },
+      {
+        id: 'apv-baru',
+        actionType: 'payment_create_charge',
+        payloadPreview: 'Buat QRIS Rp 100',
+        payloadHash: hashPayload({ b: 2 }),
+        payload: { b: 2 },
+        correlationId: null,
+        organizationId: 'org-1',
+      },
+    ]
+  }
+
+  it('BUG REGRESSION: "iya" DITOLAK kalau ada lebih dari satu tertunda', async () => {
+    // Menjalankan yang salah persetujuan lebih buruk daripada tidak menjalankan
+    // apa pun: persetujuan jadi rumit dan orang sudah mengira sudah
+    // menyetujui.
+    const { prisma, state } = buatPrismaPalsu({})
+    const executed: string[] = []
+    prisma.approval.findMany = async () => duaApproval()
+    prisma.approval.findFirst = async () => null
+
+    const { whatsapp, terkirim } = buatWhatsAppPalsu()
+    const engine = new ApprovalEngine({
+      prisma: prisma as never,
+      whatsapp,
+      executor: {
+        executeApproved: async (i) => {
+          executed.push(i.approvalId ?? '?')
+          return { ok: true, summary: 'selesai' }
+        },
+      },
+    })
+
+    const hasil = await engine.tryHandleReply({
+      text: 'iya',
+      chatJid: '628@s.whatsapp.net',
+      actorUserId: '25bc6013-7954-4331-bfce-e63c34fc1021',
+    })
+
+    expect(hasil).toBe('reject')
+    expect(executed, 'ada tindakan yang dijalankan padahal majemuk').toHaveLength(0)
+    expect(state.updated, 'ada approval yang ditandai APPROVED').toHaveLength(0)
+
+    // Dan pengguna harus diberi tahu KEDUA tindakan, supaya dia bisa memilih.
+    const pesan = terkirim.map((m) => m.text).join('\n')
+    expect(pesan, 'tidak ada balasan sama sekali').not.toBe('')
+    expect(pesan).toContain('2')
+    expect(pesan).toContain('whatsapp_send_message')
+    expect(pesan).toContain('payment_create_charge')
+  })
+
+  it('"batal semua" membatalkan SEMUA yang tertunda', async () => {
+    // Jalur keluar harus ada. Kalau "iya" ditolak tanpa jalan keluar, approval
+    // hanya bisa hilang lewat kedaluwarsa 15 menit.
+    const { prisma, state } = buatPrismaPalsu({})
+    prisma.approval.findMany = async () => duaApproval()
+    prisma.approval.findFirst = async () => duaApproval()[0]!
+
+    const { whatsapp } = buatWhatsAppPalsu()
+    const engine = new ApprovalEngine({ prisma: prisma as never, whatsapp })
+
+    await engine.tryHandleReply({
+      text: 'batal semua',
+      chatJid: '628@s.whatsapp.net',
+      actorUserId: '25bc6013-7954-4331-bfce-e63c34fc1021',
+    })
+
+    expect(
+      state.updated.some((u) => u.status === 'REJECTED'),
+      '"batal semua" tidak membatalkan apa pun',
+    ).toBe(true)
+  })
+
+  it('satu tertunda tetap bisa disetujui — jangan sampai ada penolakan sepele', async () => {
+    const { prisma } = buatPrismaPalsu({})
+    prisma.approval.findMany = async () => [duaApproval()[0]!]
+    prisma.approval.findFirst = async () => duaApproval()[0]!
+
+    const executed: string[] = []
+    const { whatsapp } = buatWhatsAppPalsu()
+    const engine = new ApprovalEngine({
+      prisma: prisma as never,
+      whatsapp,
+      executor: {
+        executeApproved: async (i) => {
+          executed.push(i.approvalId ?? '?')
+          return { ok: true, summary: 'selesai' }
+        },
+      },
+    })
+
+    const hasil = await engine.tryHandleReply({
+      text: 'iya',
+      chatJid: '628@s.whatsapp.net',
+      actorUserId: '25bc6013-7954-4331-bfce-e63c34fc1021',
+    })
+
+    expect(hasil).toBe('approve')
+    expect(executed).toEqual(['apv-lama'])
   })
 })
