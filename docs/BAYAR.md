@@ -1,6 +1,6 @@
 # Pembayaran BaturPay
 
-Status: **IMPLEMENTED** · **TESTED** (724 test lulus, 0 gagal)
+Status: **IMPLEMENTED** · **TESTED** (727 test lulus, 0 gagal)
 
 Semua endpoint, nama field, rentang nilai, dan status diambil dari dokumentasi
 resmi BaturPay (`baturpay.vercel.app/docs`). Tidak ada yang dikarang.
