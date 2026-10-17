@@ -1,6 +1,6 @@
 # Audit Kemampuan
 
-Status: **IMPLEMENTED** · **TESTED** (727 test lulus, 0 gagal)
+Status: **IMPLEMENTED** · **TESTED** (731 test lulus, 0 gagal)
 
 `tests/integration/capability-audit.test.ts`
 
