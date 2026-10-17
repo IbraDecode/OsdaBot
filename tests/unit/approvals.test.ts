@@ -650,6 +650,15 @@ describe('lebih dari satu persetujuan tertunda', () => {
     prisma.approval.findMany = async () => duaApproval()
     prisma.approval.findFirst = async () => duaApproval()[0]!
 
+    // `where` dicatat terpisah supaya test bisa memeriksa SIAPA yang dibatalkan,
+    // bukan hanya bahwa `status` berubah.
+    const whereTercatat: Array<Record<string, unknown>> = []
+    const updateManyAsli = prisma.approval.updateMany
+    prisma.approval.updateMany = async (args: { where?: Record<string, unknown>; data: Record<string, unknown> }) => {
+      whereTercatat.push(args.where ?? {})
+      return updateManyAsli({ data: args.data } as never)
+    }
+
     const { whatsapp } = buatWhatsAppPalsu()
     const engine = new ApprovalEngine({ prisma: prisma as never, whatsapp })
 
@@ -663,6 +672,18 @@ describe('lebih dari satu persetujuan tertunda', () => {
       state.updated.some((u) => u.status === 'REJECTED'),
       '"batal semua" tidak membatalkan apa pun',
     ).toBe(true)
+
+    // WAJIB semua, bukan satu.
+    //
+    // Versi pertama test ini hanya memeriksa `status === 'REJECTED'` — yang
+    // bernilai benar baik saat satu approval dibatalkan maupun dua. Jadi ia
+    // lulus hampa ketika `id` diturunkan menjadi satu id.
+    const where = whereTercatat.at(-1)
+    expect(where, 'tidak ada pembaruan yang tercatat').toBeTruthy()
+    expect(
+      where!.id,
+      'hanya satu approval yang dibatalkan, padahal ada dua tertunda',
+    ).toEqual({ in: ['apv-lama', 'apv-baru'] })
   })
 
   it('satu tertunda tetap bisa disetujui — jangan sampai ada penolakan sepele', async () => {
