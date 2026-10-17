@@ -87,6 +87,21 @@ export type ToolErrorCode =
   | 'UNKNOWN_OUTCOME'
   | 'INTERNAL_ERROR'
   /**
+   * Tindakan sudah DITERIMA, tapi menunggu persetujuan pengguna.
+   *
+   * Kode tersendiri karena maknanya berlawanan dengan kegagalan biasa:
+   *
+   * - Tindakan **tidak** gagal — sudah tercatat dan akan berjalan setelah
+   *   pengguna menjawab.
+   * - Memanggilnya lagi akan membuat permintaan persetujuan kedua yang
+   *   tidak bisa dijawab satu per satu. Dan karena hasilnya diserialisasi
+   *   sebagai `ok: false`, model akan menganggapnya gagal dan mencoba lagi —
+   *   persis yang terjadi: satu perintah QRIS menghasilkan tiga permintaan.
+   * -Jadi `retryable: false`, dan pesannya harus menyatakan bahwa yang
+   *   perlu dilakukan hanya memberitahu pengguna untuk menjawab "iya".
+   */
+  | 'APPROVAL_PENDING'
+  /**
    * Sistem sedang dalam mode aman.
    *
    * Kode tersendiri, bukan `RATE_LIMITED` atau `INTERNAL_ERROR`, karena

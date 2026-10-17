@@ -88,8 +88,17 @@ describe('gerbang persetujuan ToolRegistry', () => {
     // Dan tool tidak boleh dieksekusi sebelum disetujui.
     expect(hasil.success).toBe(false)
     if (!hasil.success) {
-      expect(hasil.error.code).toBe('VALIDATION_FAILED')
+      // BUG REGRESSION: kodenya `APPROVAL_PENDING`, bukan `VALIDATION_FAILED`.
+      //
+      // Menunggu persetujuan bukan kegagalan input. Kalau kodenya `VALIDATION_FAILED`,
+      // model membacanya sebagai "argumen salah" lalu memperbaiki argumen dan
+      // memanggil lagi — hasilnya permintaan persetujuan kedua untuk hal yang
+      // sama, dan seterusnya.
+      expect(hasil.error.code).toBe('APPROVAL_PENDING')
       expect(hasil.error.message).toContain('persetujuan')
+      // Dan pesannya harus menyuruh model BERHENTI, bukan mencoba lagi.
+      expect(hasil.error.message.toLowerCase()).toContain('jangan panggil')
+      expect(hasil.error.retryable).toBe(false)
     }
   })
 

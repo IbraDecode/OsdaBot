@@ -128,6 +128,38 @@ export class ApprovalEngine implements ApprovalBroker {
     const chatJid = context.chatJid ?? null
     const payloadHash = hashPayload(context.payload)
 
+    // ── Permintaan yang identik sudah menunggu → jangan buat yang kedua ───────
+    //
+    // Setiap pemanggilan tool ber-`requiresApproval` membuat baris baru, tanpa
+    // kecuali. Satu jalan agent yang memanggil tool yang sama beberapa kali
+    // karena model membaca "menunggu persetujuan" sebagai kegagalan — itu
+    // membuat tumpukan approval yang tidak bisa dijawab satu per satu, dan
+    // mengacak yang mana yang sebenarnya dimaksud pengguna.
+    //
+    // Dedup di SUMBER, bukan di pemanggil: di sinilah kebenaran benar-benar ada.
+    // Dedup di sisi model hanya mengurangi satu jalur saja; pemanggil lain (CLI,
+    // outbox) tetap bisa membuat duplikat.
+    if (chatJid) {
+      const sudahAda = await this.deps.prisma.approval.findFirst({
+        where: {
+          chatJid,
+          actionType: context.actionType,
+          payloadHash,
+          status: 'PENDING',
+          expiresAt: { gt: new Date() },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true },
+      })
+      if (sudahAda) {
+        log.info(
+          { approvalId: sudahAda.id, actionType: context.actionType },
+          'permintaan identik sudah menunggu — tidak dibuat ulang',
+        )
+        return 'pending'
+      }
+    }
+
     const approval = await this.deps.prisma.approval.create({
       data: {
         organizationId: context.organizationId,

@@ -248,6 +248,17 @@ export class AgentRuntime {
      * Menghindre pengulangan yang pasti gagal dengan argumen identik.
      */
     const failedCalls = new Set<string>()
+
+    /**
+     * Tool yang sudah meminta persetujuan di putaran ini.
+     *
+     * Mengulang panggilan itu tidak akan mengubah apa pun — yang perlu terjadi
+     * adalah pengguna menjawab. Tanpa ini, model membaca "menunggu persetujuan"
+     * sebagai kegagalan lalu memanggil tool yang sama berulang kali; satu
+     * perintah QRIS berakhir jadi tiga permintaan yang tidak bisa dijawab satu
+     * per satu.
+     */
+    const menungguPersetujuanIds = new Set<string>()
     let totalUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 }
 
     while (steps < this.maxSteps) {
@@ -387,9 +398,60 @@ export class AgentRuntime {
           continue
         }
 
+        // Sudah minta persetujuan di putaran ini.
+        //
+        // `failedCalls` hanya memblokir panggilan dengan argumen IDENTIK. Kalau
+        // model mengubah sedikit argumennya — contoh `description` berbeda —
+        // sidik jarinya beda dan panggilan kedua lolos, menghasilkan permintaan
+        // kedua untuk hal yang sama.
+        //
+        // Pagar per-nama-tool menutup semua varian argumen.
+        if (menungguPersetujuanIds.has(call.name)) {
+          messages.push({
+            role: 'tool',
+            tool_call_id: call.id,
+            content: JSON.stringify({
+              error:
+                'Tindakan ini sudah tercatat dan masih menunggu persetujuan pengguna. ' +
+                'Jangan panggil lagi. Beri tahu pengguna untuk menjawab "iya" atau "batal".',
+            }),
+          })
+          continue
+        }
+
         const result = await this.executeTool(call, context)
+
+        // Menunggu persetujuan BUKAN kegagalan.
+        //
+        // Tindakan sudah tercatat dan akan berjalan setelah pengguna menjawab.
+        // Kalau ini ikut dihitung "gagal", model akan membaca hasilnya sebagai
+        // masalah dan memanggilnya lagi — dan satu perintah QRIS bisa
+        // menghasilkan tiga permintaan persetujuan yang tidak bisa dijawab
+        // satu per satu.
+        //
+        // Tetap dimasukkan ke `failedCalls` dengan sengaja: panggilan identik
+        // berikutnya AKAN diblokir, dan pesannya memberi tahu apa yang harus
+        // dilakukan (memberi tahu pengguna), bukan mencoba lagi.
+        const menungguPersetujuan =
+          !result.success && result.error.code === 'APPROVAL_PENDING'
         if (!result.success) failedCalls.add(sidikJari)
+        if (menungguPersetujuan) menungguPersetujuanIds.add(call.name)
+
         messages.push({ role: 'tool', tool_call_id: call.id, content: serializeResult(result) })
+
+        if (menungguPersetujuan) {
+          // Satu sinyal eksplisit, lalu putuskan putaran. Melanjutkan agent
+          // dengan tool lain setelah persetujuan diminta hanya memberi
+          // kesempatan membuat permintaan kedua.
+          messages.push({
+            role: 'user',
+            content:
+              '[catatan sistem] Tindakan tadi sudah tercatat dan menunggu persetujuan. ' +
+              'Jangan menjalankan tindakan lain yang butuh persetujuan. ' +
+              'Beri tahu pengguna apa yang harus dijawab, lalu selesaikan.',
+          })
+          break
+        }
       }
 
       recorder?.langkah({ toolNames: namaToolPutaran })

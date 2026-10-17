@@ -318,8 +318,9 @@ export class ToolRegistry {
       if (verdict === 'pending') {
         await this.audit(context, name, input, 'pending', 'APPROVAL_PENDING')
         return fail(
-          'VALIDATION_FAILED',
-          'Tindakan ini menunggu persetujuan. Balas "iya" untuk melanjutkan atau "batal" untuk membatalkan.',
+          'APPROVAL_PENDING',
+          'Tindakan ini sudah tercatat dan sedang menunggu persetujuan pengguna. ' +
+            'Jangan panggil lagi — cukup rijuk pengguna untuk menjawab "iya" atau "batal".',
         )
       }
     }
